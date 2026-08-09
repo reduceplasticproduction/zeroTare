@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": { "api/leggi.js": { "maxDuration": 30 } }
+  "functions": { "api/leggi.js": { "maxDuration": 45 } }
 }

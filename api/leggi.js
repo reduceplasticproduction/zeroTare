@@ -37,6 +37,150 @@ Regole:
 - Se il peso non è stampato ma ci sono prezzo e prezzo_al_kg, calcolalo: peso_netto_g = prezzo/prezzo_al_kg*1000.
 - Rispondi SOLO con il JSON.`;
 
+// ---- CASO C (confezionato industriale): prezzo di confronto a tre livelli ----
+// 1) Open Prices (prezzo reale, filtrato sull'Italia)
+// 2) ricerca web con Claude (stima onesta, nazionale non locale)
+// 3) niente: resta solo il prezzo letto sul cartellino
+//
+// Il campo aggiunto al risultato è `prezzo_confronto`:
+//   { fonte: "openprices"|"stima_web"|"solo_letto", valore: number|null,
+//     valuta: "EUR", nota: string, ...dettagli specifici della fonte }
+
+const OPENPRICES_ENDPOINT = "https://prices.openfoodfacts.org/api/v1/prices";
+
+async function cercaOpenPrices(barcode) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const url = `${OPENPRICES_ENDPOINT}?product_code=${encodeURIComponent(barcode)}&order_by=-created&size=20`;
+    const r = await fetch(url, { signal: controller.signal });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    // teniamo solo rilevazioni in euro, in un negozio geolocalizzato in Italia
+    const it = items.filter(
+      (p) =>
+        p.currency === "EUR" &&
+        typeof p.price === "number" &&
+        p.location &&
+        String(p.location.osm_address_country_code || "").toUpperCase() === "IT"
+    );
+    if (it.length === 0) return null;
+
+    const usati = it.slice(0, 5); // le più recenti (order_by=-created)
+    const media = usati.reduce((s, p) => s + p.price, 0) / usati.length;
+    const dataPiuRecente = usati.reduce((max, p) => (!max || (p.date && p.date > max) ? p.date : max), null);
+
+    return {
+      fonte: "openprices",
+      valore: Math.round(media * 100) / 100,
+      valuta: "EUR",
+      n_rilevazioni: it.length,
+      data_piu_recente: dataPiuRecente,
+      nota: `Prezzo medio reale da ${it.length} rilevazion${it.length === 1 ? "e" : "i"} in Italia (database aperto Open Prices / Open Food Facts).`,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const PROMPT_PREZZO_WEB = (nome) => `Cerca sul web a quanto si vende oggi in Italia, in un supermercato, il
+prodotto "${nome}". Usa listini online, e-commerce di supermercati o negozi italiani, siti di
+comparazione prezzi. Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza backtick,
+in questa forma esatta:
+{"prezzo_tipico_eur": number|null, "fonte": string|null}
+
+Regole:
+- prezzo_tipico_eur: la tua migliore stima in euro del prezzo di vendita al pubblico in Italia. Metti null
+  se non trovi nulla di ragionevolmente attendibile: mai un numero inventato.
+- fonte: breve descrizione testuale di dove hai trovato l'informazione (es. "prezzo medio da siti di
+  supermercati italiani"), null se prezzo_tipico_eur è null.
+- È una stima NAZIONALE: non hai modo di sapere il prezzo nel negozio specifico dell'utente, quindi non
+  inventare un negozio o una zona geografica precisa.
+- Rispondi SOLO con il JSON.`;
+
+async function cercaPrezzoWeb(parsed, key) {
+  const nome = parsed.nome || parsed.prodotto_chiave;
+  if (!nome) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const r = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1024,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
+        messages: [{ role: "user", content: PROMPT_PREZZO_WEB(nome) }],
+      }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const testo = (data.content || [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .replace(/```json|```/g, "")
+      .trim();
+
+    const m = testo.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    let obj;
+    try {
+      obj = JSON.parse(m[0]);
+    } catch {
+      return null;
+    }
+    if (typeof obj.prezzo_tipico_eur !== "number") return null;
+
+    return {
+      fonte: "stima_web",
+      valore: Math.round(obj.prezzo_tipico_eur * 100) / 100,
+      valuta: "EUR",
+      dettaglio_fonte: obj.fonte || null,
+      nota:
+        "Non ho ancora un prezzo reale per questo prodotto: dalla ricerca web, potresti pagarlo circa " +
+        "questa cifra. È una stima di prezzo tipico nazionale — il web non dice cosa costa \"nella tua " +
+        "zona\" — non il prezzo esatto del tuo negozio.",
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function trovaPrezzoConfronto(parsed, key) {
+  if (!parsed || parsed.in_ambito === false) return null;
+  if (parsed.tipo !== "industriale") return null; // la scala vale solo per il caso C
+
+  let risultato = null;
+  if (parsed.barcode) {
+    risultato = await cercaOpenPrices(parsed.barcode);
+  }
+  if (!risultato) {
+    risultato = await cercaPrezzoWeb(parsed, key);
+  }
+  if (!risultato) {
+    risultato = {
+      fonte: "solo_letto",
+      valore: null,
+      valuta: "EUR",
+      nota: "Nessun prezzo di confronto disponibile per ora, né da Open Prices né dalla ricerca web: vedi solo il prezzo letto sul cartellino.",
+    };
+  }
+  return risultato;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ errore: "Usa POST" });
@@ -100,6 +244,20 @@ export default async function handler(req, res) {
     // se il peso manca ma abbiamo prezzo e prezzo_al_kg, lo ricaviamo
     if (!parsed.peso_netto_g && parsed.prezzo && parsed.prezzo_al_kg) {
       parsed.peso_netto_g = Math.round((parsed.prezzo / parsed.prezzo_al_kg) * 1000);
+    }
+
+    // caso C (confezionato industriale): prezzo di confronto a tre livelli.
+    // Se qualcosa va storto qui non deve far fallire la lettura già riuscita:
+    // al peggio parsed.prezzo_confronto resta "solo_letto".
+    try {
+      parsed.prezzo_confronto = await trovaPrezzoConfronto(parsed, key);
+    } catch {
+      parsed.prezzo_confronto = {
+        fonte: "solo_letto",
+        valore: null,
+        valuta: "EUR",
+        nota: "Errore nel recupero del prezzo di confronto.",
+      };
     }
 
     return res.status(200).json(parsed);

@@ -69,6 +69,7 @@
       <div>
         <button class="cta" id="btn-inizia" style="margin-top:0">Inizia</button>
         <div style="color:#5DCAA5; font-size:12px; margin-top:12px">Gratis · nessun account · funziona da telefono</div>
+        <button id="btn-guida" style="background:transparent; border:none; color:#9FE1CB; font-size:13px; margin-top:14px; text-decoration:underline">Come si usa · problemi con la fotocamera?</button>
       </div>
     </div>
   </section>
@@ -76,13 +77,8 @@
   <!-- ===== CARRELLO ===== -->
   <section id="s-cart">
     <div class="riga" style="align-items:center">
-      <div style="display:flex; align-items:center; gap:10px">
-        <div><h1>ZeroTare</h1><div class="hint">Spesa di oggi</div></div>
-      </div>
-      <div style="display:flex; align-items:center; gap:14px">
-        <div class="center"><div class="prezzo" id="cart-tot" style="font-size:22px">0,00 €</div><div class="hint">totale</div></div>
-        <button id="btn-info" aria-label="Istruzioni" style="width:34px; height:34px; border-radius:50%; border:1px solid var(--bordo); background:#fff; color:var(--verde-scuro); font-size:17px; font-weight:600">i</button>
-      </div>
+      <div><h1>ZeroTare</h1><div class="hint">Spesa di oggi</div></div>
+      <div class="center"><div class="prezzo" id="cart-tot" style="font-size:22px">0,00 €</div><div class="hint">totale</div></div>
     </div>
     <div id="cart-lista" style="margin-top:14px"></div>
     <label class="cta" style="display:block; text-align:center" for="file">+ Aggiungi prodotto</label>
@@ -319,7 +315,7 @@ function mostraVerdetto(d){
       box.innerHTML = html + "</div>"; finish([]); return;
     }
     html += voce("qui", pagato, false, "");
-    html += `<div class="hint center" style="margin-top:6px">Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database.</div>`;
+    html += renderConfronto(d.prezzo_confronto, pagato);
     box.innerHTML = html + "</div>";
     finish([["Aggiungo al carrello", "btn-scelta", {nome,scelta:"preso",pagato,meglio:pagato,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
     return;
@@ -330,6 +326,34 @@ function voce(etichetta, prezzo, best, extra){
   return `<div class="voce ${best?'best':''}">
     <div class="riga"><span style="color:${best?'var(--verde-scuro)':'inherit'}">${etichetta}</span>
       <span class="prezzo" style="color:${best?'var(--verde-scuro)':'inherit'}">${IT(prezzo)}</span></div>${extra||""}</div>`;
+}
+
+// CASO C — mostra il confronto a tre livelli restituito da /api/leggi:
+// prezzo reale (Open Prices), stima da ricerca web, o solo il prezzo letto.
+function renderConfronto(c, pagato){
+  if(!c || c.fonte === "solo_letto"){
+    const nota = (c && c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database.";
+    return `<div class="hint center" style="margin-top:6px">${nota}</div>`;
+  }
+  if(c.fonte === "openprices" && typeof c.valore === "number"){
+    const delta = pagato - c.valore;
+    const scostato = Math.abs(delta) > 0.02;
+    const colore = !scostato ? "inherit" : (delta > 0 ? "var(--rosso-scuro)" : "var(--verde-scuro)");
+    const riga = !scostato ? "qui sei in linea con la media" : `${IT(Math.abs(delta))} ${delta>0?"in più":"in meno"} qui, rispetto alla media`;
+    return `<div class="voce" style="margin-top:6px">
+      <div class="riga"><span>prezzo medio in Italia</span><span class="prezzo">${IT(c.valore)}</span></div>
+      <div class="hint" style="color:${colore}">${riga}</div>
+      <div class="hint" style="margin-top:4px">${c.nota||""}${c.data_piu_recente?` · ultima rilevazione ${c.data_piu_recente}`:""}</div>
+    </div>`;
+  }
+  if(c.fonte === "stima_web" && typeof c.valore === "number"){
+    return `<div class="hint center" style="margin-top:6px; color:var(--ambra-scuro)">
+      Non ho ancora un prezzo reale per questo prodotto: dalla ricerca web potresti pagarlo circa
+      <b>${IT(c.valore)}</b> — stima nazionale, non necessariamente il prezzo del tuo negozio.
+    </div>`;
+  }
+  // fonte imprevista o senza valore: non blocchiamo la UI, restiamo onesti
+  return `<div class="hint center" style="margin-top:6px">${(c&&c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database."}</div>`;
 }
 
 // crea i pulsanti del verdetto e li lega, senza JSON inline nell'HTML
@@ -377,11 +401,11 @@ $("btn-chiudi").onclick = ()=>{
 $("btn-nuovo").onclick = ()=>{ carrello=[]; salva(); render(); show("s-cart"); };
 
 $("btn-inizia").onclick = ()=>{ localStorage.setItem("zt_seen","1"); show("s-cart"); };
-$("btn-info").onclick = ()=>show("s-guida");
-$("btn-chiudi-guida").onclick = ()=>show("s-cart");
+$("btn-guida").onclick = ()=>show("s-guida");
+$("btn-chiudi-guida").onclick = ()=>show("s-welcome");
 
 render();
-show(localStorage.getItem("zt_seen") ? "s-cart" : "s-welcome");
+show("s-welcome");
 
 if("serviceWorker" in navigator){ /* registrazione SW opzionale in futuro */ }
 </script>
