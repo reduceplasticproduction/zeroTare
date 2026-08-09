@@ -281,10 +281,9 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 700,
-        // temperature 0: vogliamo che lo stesso prodotto, fotografato due volte (sfuso e
-        // confezionato), dia la STESSA prodotto_chiave il più possibile — serve per far
-        // scattare il confronto automatico tra le due scansioni.
-        temperature: 0,
+        // niente "temperature": questo modello la rifiuta (invalid_request_error). La
+        // coerenza di prodotto_chiave tra due scansioni dello stesso prodotto si affida
+        // solo al prompt più meccanico e al confronto tollerante lato client.
         messages: [
           {
             role: "user",
