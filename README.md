@@ -20,7 +20,8 @@ zerotare/
 │   ├── leggi.js         → funzione serverless: legge l'etichetta con Claude vision
 │   └── prezzi.js         → funzione serverless: salva/legge rilevazioni su Supabase
 ├── lib/
-│   └── supabase.js      → helper REST verso Supabase (usato da leggi.js e prezzi.js)
+│   ├── supabase.js      → helper REST verso Supabase (usato da leggi.js e prezzi.js)
+│   └── geo.js           → distanza haversine + RAGGIO_VICINO_KM (25, facile da cambiare)
 ├── db/
 │   └── schema.sql       → migrazione: tabella `prezzi`, indici, RLS
 ├── scripts/
@@ -72,7 +73,15 @@ L'app riconosce da sola, dalla lettura dell'etichetta, quale caso ha davanti.
   la materia prima ("il pollo crudo, da solo, costerebbe X") e mostra il resto come
   comodità + imballaggio. Azione: *prendo, mi va la comodità*.
 - **C — confezionato industriale** (Nutella, pasta di marca). Ha un barcode globale:
-  qui il confronto è tra negozi (dove costa meno). Azione: *aggiungo al carrello*.
+  verdetto a **tre bande** (fino a tre, quelle senza dati si omettono) — 1) quello che
+  hai fotografato; 2) miglior prezzo vicino a te (il più basso tra le rilevazioni reali
+  in negozio entro 25 km in linea d'aria, raggio facilmente modificabile in
+  `lib/geo.js`); 3) migliore sul web, solo se manca la banda 2 (stima, mai in
+  grassetto, cache di massimo una ricerca al giorno per prodotto). Il grassetto segna
+  il prezzo più basso *azionabile* (mai il web) tra fotografato e vicino a te; a parità
+  vince "fotografato". Due pulsanti a posizione fissa — *aggiungi al carrello* /
+  *continua con un altro prodotto* — con il verde che segna l'azione giusta spostandosi
+  tra i due, senza mai scambiarli di posto.
 
 Chiusura carrello: una **bilancia** tra il meglio e il peggio che potevi fare, con
 la tacca su dove sei finito; il risparmio in evidenza; e — sussurrata, una riga in
