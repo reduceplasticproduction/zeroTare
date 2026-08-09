@@ -3,6 +3,8 @@
 // i campi estratti in JSON. La chiave API sta nelle variabili d'ambiente di
 // Vercel (ANTHROPIC_API_KEY), MAI nel codice.
 
+import { salvaRilevazione, trovaConfrontoETrend } from "../lib/supabase.js";
+
 // Modello più capace di Haiku sulla lettura di etichette piccole/sfocate: la qualità
 // dell'OCR è la priorità qui, la latenza in più è accettabile. Sovrascrivibile da Vercel.
 const MODEL = process.env.ZT_MODEL || "claude-sonnet-5";
@@ -266,6 +268,18 @@ async function arricchisciStimaMateriaPrima(parsed, key) {
   }
 }
 
+// arricchisce `parsed` con trend (sempre) e con la miglior rilevazione già nel NOSTRO
+// database (parsed._dbConfronto, uso interno) secondo la gerarchia: negozio > openprices
+// > web. Va chiamata (e attesa) PRIMA di trovaPrezzoConfronto, per evitare di rifare una
+// ricerca live (Open Prices o peggio ricerca web a pagamento) quando il dato ce l'abbiamo
+// già gratis in tabella. Il trend vale per qualunque prodotto, non solo il caso C.
+async function arricchisciDBeTrend(parsed) {
+  if (!parsed) return;
+  const risultato = await trovaConfrontoETrend({ barcode: parsed.barcode, prodotto_chiave: parsed.prodotto_chiave });
+  parsed.trend = risultato.trend; // sempre presente: {stato:"su"|"giu"|"stabile", ...} mai vuoto
+  parsed._dbConfronto = risultato.confronto || null;
+}
+
 async function trovaPrezzoConfronto(parsed, key) {
   if (!parsed) return null;
   // Il confronto tra negozi/web vale per i prodotti "caso C": confezioni con barcode
@@ -274,6 +288,33 @@ async function trovaPrezzoConfronto(parsed, key) {
   // i non alimentari: anche per loro il database utenti parte vuoto e la ricerca web
   // dà comunque un riferimento onesto invece di rifiutare il prodotto.
   if (parsed.tipo !== "industriale") return null;
+
+  // 0) DB ZeroTare — gerarchia massima priorità, gratis, già in tabella:
+  //    negozio reale (rilevazione di un cliente) oppure openprices (seed o già cercato prima).
+  //    REGOLA INVIOLABILE: solo origine "negozio" può essere mostrata come "verificato".
+  const dbc = parsed._dbConfronto;
+  if (dbc && dbc.origine === "negozio") {
+    const zona = dbc.nome_luogo ? ` in provincia di ${dbc.nome_luogo}` : "";
+    return {
+      fonte: "negozio",
+      valore: dbc.valore,
+      valuta: "EUR",
+      oggi: dbc.oggi,
+      data: dbc.data,
+      nome_luogo: dbc.nome_luogo,
+      nota: dbc.oggi
+        ? `Verificato oggi da un cliente${zona}.`
+        : `Rilevato il ${String(dbc.data).slice(0, 10)} da un cliente${zona}: non è di oggi, ma è un prezzo reale.`,
+    };
+  }
+  if (dbc && dbc.origine === "openprices") {
+    return {
+      fonte: "openprices",
+      valore: dbc.valore,
+      valuta: "EUR",
+      nota: "Prezzo medio reale da Open Prices / Open Food Facts (già nel nostro database).",
+    };
+  }
 
   let risultato = null;
   if (parsed.barcode) {
@@ -305,7 +346,7 @@ export default async function handler(req, res) {
   try {
     let body = req.body;
     if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = {}; } }
-    const { image, mime } = body || {};
+    const { image, mime, lat, lng, nome_luogo } = body || {};
     if (!image) return res.status(400).json({ errore: "Manca l'immagine" });
 
     const r = await fetch(ENDPOINT, {
@@ -361,6 +402,13 @@ export default async function handler(req, res) {
       parsed.peso_netto_g = Math.round((parsed.prezzo / parsed.prezzo_al_kg) * 1000);
     }
 
+    // prima il nostro DB (gratis, gerarchia negozio > openprices): serve sia per il
+    // trend (qualunque caso) sia per evitare ricerche live/a pagamento quando il dato
+    // c'è già. Va atteso PRIMA di trovaPrezzoConfronto, che lo usa.
+    await arricchisciDBeTrend(parsed).catch(() => {
+      parsed.trend = { stato: "stabile", n_recenti: 0, n_precedenti: 0 }; // mai vuoto (Compito 4)
+    });
+
     // arricchimenti via ricerca web, in parallelo: se qualcosa va storto qui non deve
     // far fallire la lettura già riuscita, al peggio restano le stime "a memoria" del modello.
     const compiti = [
@@ -383,7 +431,36 @@ export default async function handler(req, res) {
     if (parsed.e_semilavorato) {
       compiti.push(arricchisciStimaMateriaPrima(parsed, key).catch(() => {}));
     }
+
+    // Compito 3: ogni scansione è una rilevazione reale fatta in negozio → origine
+    // "negozio", con lat/lng del telefono se il permesso è stato dato (altrimenti
+    // restano null: resta comunque una rilevazione vera, solo senza zona per il
+    // badge "verificato ... in provincia di"). Il prezzo salvato è quello LETTO sul
+    // cartellino (al kg se sfuso, altrimenti il prezzo pieno), mai una stima.
+    compiti.push(
+      (async () => {
+        if (!parsed.prodotto_chiave) return;
+        const prezzoLetto = parsed.sfuso && parsed.prezzo_al_kg != null ? parsed.prezzo_al_kg : parsed.prezzo;
+        if (prezzoLetto == null) return;
+        const unita = parsed.sfuso && parsed.prezzo_al_kg != null ? "€/kg" : "€";
+        await salvaRilevazione({
+          prodotto_chiave: parsed.prodotto_chiave,
+          nome: parsed.nome,
+          barcode: parsed.barcode,
+          categoria: parsed.categoria,
+          prezzo: prezzoLetto,
+          unita,
+          latitudine: typeof lat === "number" ? lat : null,
+          longitudine: typeof lng === "number" ? lng : null,
+          nome_luogo: nome_luogo || null,
+          origine: "negozio",
+          fonte: nome_luogo ? `scansione cliente · ${nome_luogo}` : "scansione cliente",
+        });
+      })().catch(() => {})
+    );
+
     await Promise.all(compiti);
+    delete parsed._dbConfronto; // uso interno, non va nella risposta al client
 
     return res.status(200).json(parsed);
   } catch (e) {

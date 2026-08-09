@@ -180,6 +180,41 @@ const show = id => ["s-welcome","s-cart","s-load","s-verdetto","s-chiusura","s-g
 let carrello = [];
 const salva = () => {};
 
+// ---- Compito 3: geolocalizzazione ----
+// Chiesta subito all'avvio (non al primo scatto): ogni scansione fatta in negozio deve
+// poter salvare lat/lng reali. Se il permesso viene negato, le scansioni restano valide
+// (origine "negozio" comunque, è una foto scattata sul posto) ma senza zona: niente
+// etichetta "verificato ... in provincia di", che richiede una posizione vera.
+let posizione = { lat: null, lng: null, nome_luogo: null };
+function chiediPosizione(){
+  if(!("geolocation" in navigator)) return;
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      posizione.lat = pos.coords.latitude;
+      posizione.lng = pos.coords.longitude;
+      try{
+        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${posizione.lat}&lon=${posizione.lng}&zoom=8&accept-language=it`);
+        const j = await r.json();
+        const a = j.address || {};
+        // provincia/contea quando c'è, altrimenti la città: "in provincia di X" resta onesto anche così
+        posizione.nome_luogo = a.county || a.province || a.state_district || a.city || a.town || null;
+      }catch{ /* reverse geocoding fallito: teniamo comunque lat/lng, niente nome zona */ }
+    },
+    () => { /* permesso negato o errore: le prossime scansioni non avranno lat/lng reali */ },
+    { enableHighAccuracy:false, timeout:8000, maximumAge:600000 }
+  );
+}
+chiediPosizione();
+
+// ---- Compito 4: indicatore di tendenza a tre stati, sempre presente ----
+// rosso ↑ in aumento, verde ↓ in calo, nero • stabile O dati insufficienti (mai vuoto)
+function trendBadge(trend){
+  const stato = (trend && trend.stato) || "stabile";
+  if(stato === "su") return `<span title="Prezzo in aumento negli ultimi 7 giorni" style="color:var(--rosso-scuro); font-weight:700; margin-left:10px; font-size:22px">▲</span>`;
+  if(stato === "giu") return `<span title="Prezzo in calo negli ultimi 7 giorni" style="color:var(--verde-scuro); font-weight:700; margin-left:10px; font-size:22px">▼</span>`;
+  return `<span title="Prezzo stabile, o non ci sono ancora abbastanza rilevazioni recenti" style="color:var(--ink); font-weight:700; margin-left:10px; font-size:22px">•</span>`;
+}
+
 // densità plastica indicativa per stimare i grammi buttati quando non c'è la tara letta
 const PESO_CONF_DEF = 8; // g di plastica di una vaschetta tipica, fallback
 
@@ -211,7 +246,7 @@ $("file").addEventListener("change", async e => {
   try{
     const {b64, mime} = await fotoRidotta(f);
     const r = await fetch("/api/leggi",{method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({image:b64, mime})});
+      body:JSON.stringify({image:b64, mime, lat:posizione.lat, lng:posizione.lng, nome_luogo:posizione.nome_luogo})});
     const txt = await r.text();
     let d;
     try{ d = JSON.parse(txt); }
@@ -295,7 +330,9 @@ function mostraVerdetto(d){
     salvaSfuso(chiave, d.prezzo_al_kg);
     html += `<div class="voce best">
       <div style="font-size:18px; color:var(--verde-scuro)">sfuso registrato</div>
-      <div class="prezzo" style="color:var(--verde-scuro)">${d.prezzo_al_kg.toLocaleString("it-IT")} €/kg</div>
+      <div style="display:flex; align-items:baseline; flex-wrap:wrap">
+        <span class="prezzo" style="color:var(--verde-scuro)">${d.prezzo_al_kg.toLocaleString("it-IT")} €/kg</span>${trendBadge(d.trend)}
+      </div>
     </div>`;
 
     // c'era già una confezione dello stesso prodotto in attesa? premiamo la scelta
@@ -355,7 +392,7 @@ function mostraVerdetto(d){
     const risparmio = Math.max(0, pagato - sfuso), plastica = d.tara_g || PESO_CONF_DEF;
     html += voce(conPeso("questa confezione"), pagato, "",
         risparmio>0.02?`<div style="font-size:19px; color:var(--rosso-scuro)">${IT(risparmio)} in più qui</div>`:"",
-        kg(pagato/peso*1000));
+        kg(pagato/peso*1000), d.trend);
     html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, sfuso, "best", `<div style="font-size:19px; color:var(--verde)">rilevato da te</div>`, kg(looseKg));
     box.innerHTML = html + "</div>";
     finish([
@@ -369,7 +406,7 @@ function mostraVerdetto(d){
   // avere una risposta fa abbandonare l'app all'istante.
   if(!d.sfuso && peso && d.prezzo != null && d.esiste_sfuso_equivalente && !d.e_semilavorato){
     const pagato = d.prezzo;
-    html += voce(conPeso("questa confezione"), pagato, "", "", kg(pagato/peso*1000));
+    html += voce(conPeso("questa confezione"), pagato, "", "", kg(pagato/peso*1000), d.trend);
     // salvo comunque la confezione: se in seguito arriva lo sfuso vero, mostro il risparmio esatto
     salvaConfezionePendente(chiave, {nome, prezzo:pagato, peso, plastica:d.tara_g||PESO_CONF_DEF});
 
@@ -396,7 +433,7 @@ function mostraVerdetto(d){
   if(d.e_semilavorato && d.stima_materia_prima_al_kg && peso){
     const pagato = d.prezzo, materia = d.stima_materia_prima_al_kg * peso/1000;
     const comodita = Math.max(0, pagato - materia);
-    html += voce(conPeso("questa vaschetta"), pagato, "", "", kg(pagato/peso*1000));
+    html += voce(conPeso("questa vaschetta"), pagato, "", "", kg(pagato/peso*1000), d.trend);
     html += `<div class="voce pick">
       <div style="font-size:18px; color:var(--ambra-scuro)">materia prima, da sola</div>
       <div style="display:flex; align-items:baseline; flex-wrap:wrap">
@@ -417,7 +454,7 @@ function mostraVerdetto(d){
       html += `<div class="hint">Ho riconosciuto il prodotto ma non sono riuscito a leggere il prezzo. Riprova con il cartellino ben a fuoco e dritto.</div>`;
       box.innerHTML = html + "</div>"; finish([]); return;
     }
-    html += voce(conPeso("qui"), pagato, "", "", peso ? kg(pagato/peso*1000) : null);
+    html += voce(conPeso("qui"), pagato, "", "", peso ? kg(pagato/peso*1000) : null, d.trend);
     html += renderConfronto(d.prezzo_confronto, pagato);
     box.innerHTML = html + "</div>";
     finish([["Aggiungo al carrello", "btn-scelta", {nome,scelta:"preso",pagato,meglio:pagato,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
@@ -439,23 +476,42 @@ function testoFonte(fonte){
 // variant: "" (neutro) | "best" (verde, opzione migliore reale) | "pick" (ambra, stima)
 // alKg: testo opzionale mostrato piccolo a destra del prezzo grande, come il prezzo al kg
 // stampato sulle etichette dei negozi — stessa convenzione su tutte le schermate di prezzo.
-function voce(etichetta, prezzo, variant, extra, alKg){
+// trend: opzionale, oggetto {stato} — quando presente mostra SEMPRE il pallino/freccia
+// (Compito 4) accanto al prezzo principale pagato dall'utente.
+function voce(etichetta, prezzo, variant, extra, alKg, trend){
   const colore = variant==="best" ? "var(--verde-scuro)" : variant==="pick" ? "var(--ambra-scuro)" : "inherit";
   const coloreEtichetta = variant==="best" ? "var(--verde-scuro)" : variant==="pick" ? "var(--ambra-scuro)" : "var(--muto)";
   const kgHtml = alKg ? `<span style="font-size:16px; font-weight:400; color:${colore}; margin-left:10px; white-space:nowrap">${alKg}</span>` : "";
+  const trendHtml = trend!==undefined ? trendBadge(trend) : "";
   return `<div class="voce ${variant||''}">
     <div style="font-size:18px; color:${coloreEtichetta}">${etichetta}</div>
     <div style="display:flex; align-items:baseline; flex-wrap:wrap">
-      <span class="prezzo" style="color:${colore}">${IT(prezzo)}</span>${kgHtml}
+      <span class="prezzo" style="color:${colore}">${IT(prezzo)}</span>${kgHtml}${trendHtml}
     </div>${extra||""}</div>`;
 }
 
-// CASO C — mostra il confronto a tre livelli restituito da /api/leggi:
-// prezzo reale (Open Prices), stima da ricerca web, o solo il prezzo letto.
+// CASO C — mostra il confronto a più livelli restituito da /api/leggi, in ordine di
+// priorità: negozio (database ZeroTare, rilevazione reale di un cliente) → openprices
+// (reale, media nazionale) → stima da ricerca web → solo il prezzo letto.
+// REGOLA INVIOLABILE: la parola "verificato" compare SOLO per fonte "negozio". Mai per
+// openprices o stima_web, che restano sempre esplicitamente etichettati come tali.
 function renderConfronto(c, pagato){
   if(!c || c.fonte === "solo_letto"){
     const nota = (c && c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database.";
     return `<div class="hint center" style="margin-top:6px">${nota}</div>`;
+  }
+  if(c.fonte === "negozio" && typeof c.valore === "number"){
+    const delta = pagato - c.valore;
+    const scostato = Math.abs(delta) > 0.02;
+    const colore = !scostato ? "inherit" : (delta > 0 ? "var(--rosso-scuro)" : "var(--verde-scuro)");
+    const riga = !scostato ? "qui sei in linea con quel cliente" : `${IT(Math.abs(delta))} ${delta>0?"in più":"in meno"} qui, rispetto a quella rilevazione`;
+    const etichetta = c.oggi ? "verificato oggi da un cliente" + (c.nome_luogo?` in provincia di ${c.nome_luogo}`:"")
+                              : "rilevato da un cliente" + (c.nome_luogo?` in provincia di ${c.nome_luogo}`:"") + (c.data?` il ${String(c.data).slice(0,10)}`:"");
+    return `<div class="voce best" style="margin-top:6px">
+      <div style="font-size:18px; color:var(--verde-scuro)">${etichetta}</div>
+      <div class="prezzo" style="color:var(--verde-scuro)">${IT(c.valore)}</div>
+      <div class="hint" style="color:${colore}">${riga}</div>
+    </div>`;
   }
   if(c.fonte === "openprices" && typeof c.valore === "number"){
     const delta = pagato - c.valore;

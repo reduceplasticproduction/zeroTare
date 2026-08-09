@@ -17,7 +17,15 @@ zerotare/
 │   ├── index.html      → tutta l'app (carrello, cattura, verdetto, chiusura)
 │   └── manifest.json   → PWA (installabile da telefono)
 ├── api/
-│   └── leggi.js        → funzione serverless: legge l'etichetta con Claude vision
+│   ├── leggi.js         → funzione serverless: legge l'etichetta con Claude vision
+│   └── prezzi.js         → funzione serverless: salva/legge rilevazioni su Supabase
+├── lib/
+│   └── supabase.js      → helper REST verso Supabase (usato da leggi.js e prezzi.js)
+├── db/
+│   └── schema.sql       → migrazione: tabella `prezzi`, indici, RLS
+├── scripts/
+│   ├── seed_estrai.sql  → seeding, passo 1: estrae dai dump OFF/Open Prices (DuckDB)
+│   └── seed_carica.mjs  → seeding, passo 2: carica i CSV estratti su Supabase
 ├── package.json
 ├── vercel.json
 └── README.md
@@ -90,6 +98,68 @@ caso di dubbio.
 
 ---
 
+## Database prezzi — Supabase (attivo)
+
+La tabella `prezzi` (uno storico di rilevazioni, non un catalogo prodotti) vive su
+Supabase. Setup, una tantum:
+
+1. **Crea un progetto Supabase gratuito** su [supabase.com](https://supabase.com) (piano
+   Free, nessun costo).
+2. **SQL Editor** → incolla ed esegui tutto `db/schema.sql`. Crea la tabella `prezzi`
+   con i campi esatti richiesti (`prodotto_chiave`, `nome`, `barcode`, `categoria`,
+   `prezzo`, `unita`, `data`, `latitudine`, `longitudine`, `nome_luogo`, `origine`,
+   `fonte`), gli indici, e attiva Row Level Security **senza** policy per anon/
+   authenticated: solo la service role key può leggere/scrivere. Le chiavi Supabase
+   non arrivano mai al browser, tutto passa dalle funzioni serverless.
+3. **Project Settings → API** → copia `Project URL` e `service_role` key (non la
+   `anon` key).
+4. **Vercel → Settings → Environment Variables**, aggiungi:
+   - `SUPABASE_URL` = il Project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` = la service role key
+5. Redeploy. Da questo momento ogni scansione salva una rilevazione reale
+   (`origine=negozio`), il confronto prezzi usa la gerarchia **negozio → openprices
+   → stima web**, e il trend (Compito 4) si calcola dallo storico in tabella.
+
+**Regola inviolabile**, applicata sia in `api/leggi.js` sia in `public/index.html`:
+`origine = web` o `openprices` non è **mai** mostrata come "verificato". Solo
+`origine = negozio` porta l'etichetta "verificato oggi da un cliente in provincia di
+[zona]" (o "rilevato il [data]..." se non è di oggi).
+
+### Popolare il database — seeding a costo zero (una tantum)
+
+Script separato, **non gira all'avvio dell'app**, va lanciato a mano una volta sola dal
+tuo computer (non consuma credito Anthropic: nessuna chiamata a Claude, nessuna
+ricerca web a pagamento — solo dump ufficiali gratuiti).
+
+1. **Estrazione** (richiede [DuckDB](https://duckdb.org), un binario gratis:
+   `brew install duckdb` su Mac):
+   ```
+   cd scripts
+   duckdb -c ".read seed_estrai.sql"
+   ```
+   Interroga direttamente (via httpfs, senza scaricare l'intero dump) i due dump
+   ufficiali su Hugging Face:
+   - `openfoodfacts/product-database` (`food.parquet`) → anagrafica dei ~10.000
+     prodotti più scansionati in Italia (popolarità = `unique_scans_n`).
+   - `openfoodfacts/open-prices` (`prices.parquet`) → tutte le rilevazioni di prezzo
+     reali in EUR, in Italia, per quei barcode.
+
+   Produce `off_italia_top10000.csv` e `open_prices_ita.csv` nella cartella `scripts/`.
+
+2. **Caricamento su Supabase**:
+   ```
+   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/seed_carica.mjs --dry-run
+   ```
+   controlla i numeri stampati (prodotti letti, righe pronte, prodotti con almeno un
+   prezzo), poi rilancia senza `--dry-run` per scrivere davvero.
+
+**Onestà sui numeri**: i prodotti dei ~10.000 più scansionati in Italia che non hanno
+*nessuna* rilevazione Open Prices in EUR restano senza prezzo nella tabella finché non
+arriva o una scansione reale in negozio (`origine=negozio`) o Open Prices li registra.
+Meglio un prodotto senza prezzo che un numero inventato — stesso principio già
+applicato in `api/leggi.js` per le stime. La copertura reale (quanti prodotti su
+10.000 hanno effettivamente un prezzo) la vedi nell'output dello script al passo 2.
+
 ## Database prezzi — dove agganciarsi (fase due)
 
 **Open Prices** di Open Food Facts (`prices.openfoodfacts.org`) è un database aperto
@@ -116,8 +186,11 @@ nasce dal giorno uno ed è già compatibile con Open Prices quando vorrai contri
 ## Prossimi passi
 
 1. Aggiungere logo e icone.
-2. Sostituire le stime AI con medie reali man mano che arrivano scansioni.
-3. Salvataggio delle letture in un database (Supabase o simili) per costruire lo
-   storico prezzi/luogo e alimentare/leggere Open Prices.
+2. Sostituire le stime AI con medie reali man mano che arrivano scansioni (il database
+   e il seeding ci sono già, vedi sopra).
+3. ~~Salvataggio delle letture in un database~~ — fatto (Supabase, vedi sopra).
 4. Reclutare i primi tester nelle community sfuso/zero-waste (Sfusitalia, Rete Zero
    Waste). Essendo PWA basta condividere il link, niente store.
+5. `prodotto_chiave` del seeding è un'euristica meccanica (prime 2 parole del nome
+   pulito), più grezza di quella letta da Claude sul cartellino: da affinare quando si
+   vede quanto spesso non fa match con le chiavi delle scansioni reali.
