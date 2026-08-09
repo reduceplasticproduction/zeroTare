@@ -12,6 +12,7 @@
     --ambra:#BA7517; --ambra-scuro:#854F0B; --ambra-bg:#FAEEDA;
     --rosso:#A32D2D; --rosso-scuro:#993C1D; --rosso-bg:#FAECE7;
     --blu:#185FA5; --blu-scuro:#0C447C; --blu-bg:#E6F1FB;
+    --giallo-scuro:#8A6D1B; --giallo-bg:#FBF1D6;
     --ink:#1c1c1a; --muto:#6b6b64; --hint:#98988f;
     --bordo:#e7e6df; --card:#ffffff; --pag:#f6f5ef;
   }
@@ -35,6 +36,11 @@
   .voce.best{border-color:#5DCAA5; background:var(--verde-bg)}
   .voce.pick{border-color:#FAC775; background:var(--ambra-bg)}
   .prezzo{font-size:50px; font-weight:700; line-height:1.15; white-space:nowrap}
+  /* verdetto a tre livelli (caso C): stessa struttura per le tre bande —
+     etichetta piccola in alto, prezzo hero + tendenza, kg piccolo allineato a destra */
+  .banda{border-radius:16px; padding:16px; margin-bottom:10px}
+  .banda-etichetta{font-size:18px}
+  .banda-riga{display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; margin-top:4px}
   .btn-voce{width:100%; border-radius:28px; padding:17px; font-size:24px; margin-top:10px}
   .btn-scelta{background:var(--verde); color:#04342C; font-weight:700}
   .btn-neutro{background:transparent; color:var(--muto); border:1.5px solid var(--bordo)}
@@ -243,6 +249,10 @@ function trendBadge(trend){
 // densità plastica indicativa per stimare i grammi buttati quando non c'è la tara letta
 const PESO_CONF_DEF = 8; // g di plastica di una vaschetta tipica, fallback
 
+// testo del raggio "vicino a te" per i micro-testi (il raggio VERO è lato server, un
+// parametro facilmente modificabile in lib/geo.js — questo è solo per la frase in caso C)
+const RAGGIO_KM_TESTO = 25;
+
 function render(){
   const lista = $("cart-lista");
   if(!carrello.length){
@@ -345,6 +355,7 @@ function mostraVerdetto(d){
   const chiave = (d.prodotto_chiave || d.nome || "").toLowerCase().trim();
   const peso = d.peso_netto_g || (d.prezzo && d.prezzo_al_kg ? d.prezzo/d.prezzo_al_kg*1000 : null);
   const box = $("verdetto-body");
+  $("btn-altro").classList.remove("hidden"); // ripristinato a ogni verdetto: solo il caso C lo nasconde (ha i suoi pulsanti fissi)
   let html = `<div class="card"><div style="font-weight:700; font-size:24px">${nome}</div>`;
   // il peso, quando c'è, va a fianco della prima etichetta prezzo (es. "questa confezione ·
   // 214 g") invece che su una riga tutta sua: si recupera spazio verticale.
@@ -472,7 +483,7 @@ function mostraVerdetto(d){
     return;
   }
 
-  // CASO C — confezionato industriale / già sfuso senza gemello: informativo
+  // CASO C — confezionato industriale: verdetto a tre livelli
   {
     const pagato = d.prezzo;
     if(pagato == null){
@@ -484,10 +495,60 @@ function mostraVerdetto(d){
         : `<div class="hint">Ho riconosciuto il prodotto ma non sono riuscito a leggere il prezzo. Riprova con il cartellino ben a fuoco e dritto.</div>`;
       box.innerHTML = html + "</div>"; finish([]); return;
     }
-    html += voce(conPeso("qui"), pagato, "", "", peso ? kg(pagato/peso*1000) : null, d.trend);
-    html += renderConfronto(d.prezzo_confronto, pagato);
+
+    const vicino = d.vicino_a_te; // {valore, unita, data, nome_luogo, distanza_km} | null
+    const web = vicino ? null : d.web_stima; // banda 3 solo se banda 2 è assente
+
+    // minimo azionabile: SOLO tra "fotografato" e "vicino a te" (il web non entra mai
+    // nel confronto azionabile). Pari merito → resta su "fotografato": non ha senso
+    // spostarsi per lo stesso prezzo.
+    const vicinoVince = !!(vicino && vicino.valore < pagato);
+
+    html += banda(
+      peso ? `quello che hai fotografato · ${Math.round(peso)} g` : "quello che hai fotografato",
+      pagato, peso ? kg(pagato/peso*1000) : null, d.trend,
+      { sfondo: "var(--giallo-bg)", testo: "var(--giallo-scuro)", bold: !vicinoVince }
+    );
+
+    if(vicino){
+      html += banda(
+        "miglior prezzo vicino a te",
+        vicino.valore, peso ? kg(vicino.valore/peso*1000) : null, d.trend,
+        { sfondo: "var(--verde-bg)", testo: "var(--verde-scuro)", bold: vicinoVince }
+      );
+    }
+
+    if(web){
+      html += banda(
+        "migliore sul web",
+        web.valore, peso ? kg(web.valore/peso*1000) : null, d.trend,
+        { sfondo: "var(--ambra-bg)", testo: "var(--ambra-scuro)", bold: false, piccola: true }
+      );
+      html += `<div class="fineprint" style="margin-top:-4px; margin-bottom:8px">${
+        web.primoAScansionare
+          ? "Prezzo stimato da una ricerca sul web. Sei il primo a scansionare questo prodotto. Grazie."
+          : `Prezzo stimato da una ricerca sul web: nessun prezzo verificato entro ${RAGGIO_KM_TESTO} km per questo prodotto.`
+      }</div>`;
+    }
+
     box.innerHTML = html + "</div>";
-    finish([["Aggiungo al carrello", "btn-scelta", {nome,scelta:"preso",pagato,meglio:pagato,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
+
+    // due pulsanti a posizione fissa, ordine mai scambiato: sopra "Aggiungi al
+    // carrello" (carrello), sotto "Continua con un altro prodotto" (✕). Il verde
+    // marca l'azione giusta spostandosi tra i due, senza spostare i pulsanti stessi.
+    $("btn-altro").classList.add("hidden"); // sostituito dal pulsante fisso qui sotto
+    const meglioValore = vicino ? Math.min(pagato, vicino.valore) : pagato;
+    const bCarrello = document.createElement("button");
+    bCarrello.className = "btn-voce " + (vicinoVince ? "btn-neutro" : "btn-scelta");
+    bCarrello.textContent = "🛒 Aggiungi al carrello";
+    bCarrello.addEventListener("click", ()=>aggiungi({nome,scelta:"preso",pagato,meglio:meglioValore,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}));
+    const bContinua = document.createElement("button");
+    bContinua.className = "btn-voce " + (vicinoVince ? "btn-scelta" : "btn-neutro");
+    bContinua.textContent = "✕ Continua con un altro prodotto";
+    bContinua.addEventListener("click", ()=>show("s-cart"));
+    box.appendChild(bCarrello);
+    box.appendChild(bContinua);
+    show("s-verdetto");
     return;
   }
 }
@@ -520,50 +581,25 @@ function voce(etichetta, prezzo, variant, extra, alKg, trend){
     </div>${extra||""}</div>`;
 }
 
-// CASO C — mostra il confronto a più livelli restituito da /api/leggi, in ordine di
-// priorità: negozio (database ZeroTare, rilevazione reale di un cliente) → openprices
-// (reale, media nazionale) → stima da ricerca web → solo il prezzo letto.
-// REGOLA INVIOLABILE: la parola "verificato" compare SOLO per fonte "negozio". Mai per
-// openprices o stima_web, che restano sempre esplicitamente etichettati come tali.
-function renderConfronto(c, pagato){
-  if(!c || c.fonte === "solo_letto"){
-    const nota = (c && c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database.";
-    return `<div class="hint center" style="margin-top:6px">${nota}</div>`;
-  }
-  if(c.fonte === "negozio" && typeof c.valore === "number"){
-    const delta = pagato - c.valore;
-    const scostato = Math.abs(delta) > 0.02;
-    const colore = !scostato ? "inherit" : (delta > 0 ? "var(--rosso-scuro)" : "var(--verde-scuro)");
-    const riga = !scostato ? "qui sei in linea con quel cliente" : `${IT(Math.abs(delta))} ${delta>0?"in più":"in meno"} qui, rispetto a quella rilevazione`;
-    const etichetta = c.oggi ? "verificato oggi da un cliente" + (c.nome_luogo?` in provincia di ${c.nome_luogo}`:"")
-                              : "rilevato da un cliente" + (c.nome_luogo?` in provincia di ${c.nome_luogo}`:"") + (c.data?` il ${String(c.data).slice(0,10)}`:"");
-    return `<div class="voce best" style="margin-top:6px">
-      <div style="font-size:18px; color:var(--verde-scuro)">${etichetta}</div>
-      <div class="prezzo" style="color:var(--verde-scuro)">${IT(c.valore)}</div>
-      <div class="hint" style="color:${colore}">${riga}</div>
-    </div>`;
-  }
-  if(c.fonte === "openprices" && typeof c.valore === "number"){
-    const delta = pagato - c.valore;
-    const scostato = Math.abs(delta) > 0.02;
-    const colore = !scostato ? "inherit" : (delta > 0 ? "var(--rosso-scuro)" : "var(--verde-scuro)");
-    const riga = !scostato ? "qui sei in linea con la media" : `${IT(Math.abs(delta))} ${delta>0?"in più":"in meno"} qui, rispetto alla media`;
-    return `<div class="voce" style="margin-top:6px">
-      <div style="font-size:18px; color:var(--muto)">prezzo medio in Italia</div>
-      <div class="prezzo">${IT(c.valore)}</div>
-      <div class="hint" style="color:${colore}">${riga}</div>
-      <div class="fineprint" style="margin-top:4px">${testoFonte("openprices")}${c.data_piu_recente?` · ${c.data_piu_recente}`:""}</div>
-    </div>`;
-  }
-  if(c.fonte === "stima_web" && typeof c.valore === "number"){
-    return `<div class="voce pick" style="margin-top:6px">
-        <div style="font-size:18px; color:var(--ambra-scuro)">il database non ce l'ha ancora: potresti pagarlo</div>
-        <div class="prezzo" style="color:var(--ambra-scuro)">${IT(c.valore)}</div>
-      </div>
-      <div class="fineprint" style="margin-top:6px">Prezzo stimato da una ricerca sul web. Sei il primo a scansionare questo prodotto. Grazie.</div>`;
-  }
-  // fonte imprevista o senza valore: non blocchiamo la UI, restiamo onesti
-  return `<div class="hint center" style="margin-top:6px">${(c&&c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database."}</div>`;
+// ---- verdetto a tre livelli (caso C): stessa struttura per ogni banda ----
+// etichetta piccola in alto · prezzo hero · tendenza accanto al prezzo · kg piccolo
+// allineato a destra. opz: {sfondo, testo, bold, piccola}. "piccola" = banda 3 (web):
+// carattere più piccolo delle altre due e MAI in grassetto, è contesto non azione.
+function banda(etichetta, prezzo, alKg, trend, opz){
+  const {sfondo, testo, bold, piccola} = opz;
+  const dimPrezzo = piccola ? 32 : 50;
+  const pesoPrezzo = piccola ? 400 : (bold ? 700 : 600);
+  const trendHtml = trend!==undefined ? trendBadge(trend) : "";
+  const kgHtml = alKg ? `<span style="font-size:${piccola?13:16}px; color:${testo}">${alKg}</span>` : "";
+  return `<div class="banda" style="background:${sfondo}">
+    <div class="banda-etichetta" style="color:${testo}${piccola?"; font-size:16px":""}">${etichetta}</div>
+    <div class="banda-riga">
+      <span style="display:flex; align-items:baseline">
+        <span style="font-size:${dimPrezzo}px; font-weight:${pesoPrezzo}; line-height:1.15; color:${testo}; white-space:nowrap">${IT(prezzo)}</span>${trendHtml}
+      </span>
+      ${kgHtml}
+    </div>
+  </div>`;
 }
 
 // crea i pulsanti del verdetto e li lega, senza JSON inline nell'HTML

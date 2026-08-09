@@ -3,7 +3,9 @@
 // i campi estratti in JSON. La chiave API sta nelle variabili d'ambiente di
 // Vercel (ANTHROPIC_API_KEY), MAI nel codice.
 
-import { salvaRilevazione, trovaConfrontoETrend } from "../lib/supabase.js";
+import { salvaRilevazione, trovaTrend, trovaVicinoATe, trovaStimaWebRecente } from "../lib/supabase.js";
+// RAGGIO_VICINO_KM (25 km, facilmente modificabile) vive in lib/geo.js ed è già il
+// default usato da trovaVicinoATe in lib/supabase.js — non serve reimportarlo qui.
 
 // Modello più capace di Haiku sulla lettura di etichette piccole/sfocate: la qualità
 // dell'OCR è la priorità qui, la latenza in più è accettabile. Sovrascrivibile da Vercel.
@@ -48,62 +50,22 @@ Regole:
 - Se il peso non è stampato ma ci sono prezzo e prezzo_al_kg, calcolalo: peso_netto_g = prezzo/prezzo_al_kg*1000.
 - Rispondi SOLO con il JSON.`;
 
-// ---- REGOLA GENERALE per qualunque prezzo di confronto mostrato in app ----
-// 1) database ZeroTare: prezzo reale già registrato dall'utente in questa spesa
-//    (vedi sfusiRegistrati/confezioniPendenti lato client in public/index.html).
-//    NB: oggi è solo la sessione corrente, non ancora un database condiviso tra
-//    tutti gli utenti — quello arriverà con un backend persistente (funzione pro).
-// 2) Open Prices: prezzo reale, filtrato sull'Italia (solo per prodotti con barcode
-//    industriale: uno sfuso non ha un barcode globale da cercare lì).
-// 3) ricerca web: MAI il primo prezzo trovato. Si cercano almeno TRE prezzi da fonti
-//    diverse, aggiornati nelle ultime 48 ore, e si usa quello (vedi DOMANDA_* sotto).
-// 4) solo se anche la ricerca web non trova nulla di verificabile: nessun confronto,
-//    resta solo il prezzo letto sul cartellino. Mai un numero inventato "a memoria".
+// ---- VERDETTO A TRE LIVELLI (solo caso C: confezionato con barcode industriale) ----
+// Banda 1 "quello che hai fotografato": il prezzo letto sul cartellino, sempre.
+// Banda 2 "miglior prezzo vicino a te": il più basso tra le rilevazioni origine=negozio
+//   entro RAGGIO_VICINO_KM (lib/geo.js) dalla posizione dell'utente. Ha SEMPRE la
+//   precedenza sulla banda 3: se c'è, la stima web non si calcola nemmeno (risparmia
+//   la ricerca a pagamento).
+// Banda 3 "migliore sul web": solo se la banda 2 è vuota. Cache di UNA ricerca al
+// giorno per prodotto (salvata in tabella come origine=web): se l'ultima stima salvata
+// è di oggi si riusa, altrimenti si rifà e si aggiorna. Tra prezzi web si tiene sempre
+// il più basso credibile (vedi DOMANDA_PREZZO_TIPICO); i prezzi verificati in negozio
+// invece si tengono TUTTI, non si scartano mai come outlier: ognuno è la verità del
+// suo negozio.
 //
-// Per CASO C (confezionato industriale) il campo aggiunto al risultato è
-// `prezzo_confronto`:
-//   { fonte: "openprices"|"stima_web"|"solo_letto", valore: number|null,
-//     valuta: "EUR", nota: string, ...dettagli specifici della fonte }
-
-const OPENPRICES_ENDPOINT = "https://prices.openfoodfacts.org/api/v1/prices";
-
-async function cercaOpenPrices(barcode) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const url = `${OPENPRICES_ENDPOINT}?product_code=${encodeURIComponent(barcode)}&order_by=-created&size=20`;
-    const r = await fetch(url, { signal: controller.signal });
-    if (!r.ok) return null;
-    const data = await r.json();
-    const items = Array.isArray(data.items) ? data.items : [];
-    // teniamo solo rilevazioni in euro, in un negozio geolocalizzato in Italia
-    const it = items.filter(
-      (p) =>
-        p.currency === "EUR" &&
-        typeof p.price === "number" &&
-        p.location &&
-        String(p.location.osm_address_country_code || "").toUpperCase() === "IT"
-    );
-    if (it.length === 0) return null;
-
-    const usati = it.slice(0, 5); // le più recenti (order_by=-created)
-    const media = usati.reduce((s, p) => s + p.price, 0) / usati.length;
-    const dataPiuRecente = usati.reduce((max, p) => (!max || (p.date && p.date > max) ? p.date : max), null);
-
-    return {
-      fonte: "openprices",
-      valore: Math.round(media * 100) / 100,
-      valuta: "EUR",
-      n_rilevazioni: it.length,
-      data_piu_recente: dataPiuRecente,
-      nota: `Prezzo medio reale da ${it.length} rilevazion${it.length === 1 ? "e" : "i"} in Italia (database aperto Open Prices / Open Food Facts).`,
-    };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Campi aggiunti al risultato per il caso C:
+//   vicino_a_te: { valore, unita, data, nome_luogo, distanza_km } | null
+//   web_stima:   { valore, primoAScansionare } | null   (solo se vicino_a_te è null)
 
 // ---- helper generico: una domanda + ricerca web → {valore, fonte_testo} ----
 // Usato sia per il prezzo tipico dei confezionati (caso C) sia per rinforzare le stime
@@ -268,70 +230,65 @@ async function arricchisciStimaMateriaPrima(parsed, key) {
   }
 }
 
-// arricchisce `parsed` con trend (sempre) e con la miglior rilevazione già nel NOSTRO
-// database (parsed._dbConfronto, uso interno) secondo la gerarchia: negozio > openprices
-// > web. Va chiamata (e attesa) PRIMA di trovaPrezzoConfronto, per evitare di rifare una
-// ricerca live (Open Prices o peggio ricerca web a pagamento) quando il dato ce l'abbiamo
-// già gratis in tabella. Il trend vale per qualunque prodotto, non solo il caso C.
-async function arricchisciDBeTrend(parsed) {
+// trend: vale per qualunque prodotto (non solo caso C), sempre presente (mai vuoto)
+async function arricchisciTrend(parsed) {
   if (!parsed) return;
-  const risultato = await trovaConfrontoETrend({ barcode: parsed.barcode, prodotto_chiave: parsed.prodotto_chiave });
-  parsed.trend = risultato.trend; // sempre presente: {stato:"su"|"giu"|"stabile", ...} mai vuoto
-  parsed._dbConfronto = risultato.confronto || null;
+  parsed.trend = await trovaTrend({ barcode: parsed.barcode, prodotto_chiave: parsed.prodotto_chiave });
 }
 
-async function trovaPrezzoConfronto(parsed, key) {
-  if (!parsed) return null;
-  // Il confronto tra negozi/web vale per i prodotti "caso C": confezioni con barcode
-  // industriale, alimentari o no (es. un deodorante). Per questi non esiste uno sfuso
-  // equivalente, quindi il confronto utile è "quanto costa altrove" — non escludiamo più
-  // i non alimentari: anche per loro il database utenti parte vuoto e la ricerca web
-  // dà comunque un riferimento onesto invece di rifiutare il prodotto.
-  if (parsed.tipo !== "industriale") return null;
+// costruisce banda 2 (vicino_a_te) e, solo se manca, banda 3 (web_stima) — vedi
+// commento del blocco "VERDETTO A TRE LIVELLI" più sopra per le regole.
+async function costruisciBandeCasoC(parsed, lat, lng, key) {
+  if (!parsed || parsed.tipo !== "industriale") return;
 
-  // 0) DB ZeroTare — gerarchia massima priorità, gratis, già in tabella:
-  //    negozio reale (rilevazione di un cliente) oppure openprices (seed o già cercato prima).
-  //    REGOLA INVIOLABILE: solo origine "negozio" può essere mostrata come "verificato".
-  const dbc = parsed._dbConfronto;
-  if (dbc && dbc.origine === "negozio") {
-    const zona = dbc.nome_luogo ? ` in provincia di ${dbc.nome_luogo}` : "";
-    return {
-      fonte: "negozio",
-      valore: dbc.valore,
-      valuta: "EUR",
-      oggi: dbc.oggi,
-      data: dbc.data,
-      nome_luogo: dbc.nome_luogo,
-      nota: dbc.oggi
-        ? `Verificato oggi da un cliente${zona}.`
-        : `Rilevato il ${String(dbc.data).slice(0, 10)} da un cliente${zona}: non è di oggi, ma è un prezzo reale.`,
-    };
-  }
-  if (dbc && dbc.origine === "openprices") {
-    return {
-      fonte: "openprices",
-      valore: dbc.valore,
-      valuta: "EUR",
-      nota: "Prezzo medio reale da Open Prices / Open Food Facts (già nel nostro database).",
-    };
+  const { vicino, esisteAltrove } = await trovaVicinoATe({
+    barcode: parsed.barcode,
+    prodotto_chiave: parsed.prodotto_chiave,
+    lat,
+    lng,
+  });
+  parsed.vicino_a_te = vicino; // null se non c'è nulla entro RAGGIO_VICINO_KM
+
+  if (vicino) {
+    parsed.web_stima = null; // banda 2 presente → banda 3 non serve, niente ricerca a pagamento
+    return;
   }
 
-  let risultato = null;
-  if (parsed.barcode) {
-    risultato = await cercaOpenPrices(parsed.barcode);
+  const nome = parsed.nome || parsed.prodotto_chiave;
+  if (!nome) {
+    parsed.web_stima = null;
+    return;
   }
-  if (!risultato) {
-    risultato = await cercaPrezzoWeb(parsed, key);
+
+  const oggiStr = new Date().toISOString().slice(0, 10);
+  const cache = await trovaStimaWebRecente({ barcode: parsed.barcode, prodotto_chiave: parsed.prodotto_chiave });
+  if (cache && String(cache.data).slice(0, 10) === oggiStr) {
+    // già cercato oggi per questo prodotto: si riusa, zero costo aggiuntivo
+    parsed.web_stima = { valore: Number(cache.prezzo), primoAScansionare: !esisteAltrove };
+    return;
   }
-  if (!risultato) {
-    risultato = {
-      fonte: "solo_letto",
-      valore: null,
-      valuta: "EUR",
-      nota: "Nessun prezzo di confronto disponibile per ora, né da Open Prices né dalla ricerca web: vedi solo il prezzo letto sul cartellino.",
-    };
+
+  const fresca = await cercaPrezzoWeb(parsed, key);
+  if (fresca && typeof fresca.valore === "number") {
+    parsed.web_stima = { valore: fresca.valore, primoAScansionare: !esisteAltrove };
+    // salvata come origine=web: da domani in poi (o per altri utenti oggi) si riusa
+    // questa invece di rifare la ricerca — al massimo una ricerca al giorno per prodotto
+    await salvaRilevazione({
+      prodotto_chiave: parsed.prodotto_chiave,
+      nome: parsed.nome,
+      barcode: parsed.barcode,
+      categoria: parsed.categoria,
+      prezzo: fresca.valore,
+      unita: "€",
+      latitudine: null,
+      longitudine: null,
+      nome_luogo: null,
+      origine: "web",
+      fonte: fresca.dettaglio_fonte || "ricerca web",
+    }).catch(() => {});
+  } else {
+    parsed.web_stima = null;
   }
-  return risultato;
 }
 
 export default async function handler(req, res) {
@@ -402,29 +359,20 @@ export default async function handler(req, res) {
       parsed.peso_netto_g = Math.round((parsed.prezzo / parsed.prezzo_al_kg) * 1000);
     }
 
-    // prima il nostro DB (gratis, gerarchia negozio > openprices): serve sia per il
-    // trend (qualunque caso) sia per evitare ricerche live/a pagamento quando il dato
-    // c'è già. Va atteso PRIMA di trovaPrezzoConfronto, che lo usa.
-    await arricchisciDBeTrend(parsed).catch(() => {
+    // Trend e bande 2/3 del verdetto vanno lette dal DB PRIMA di salvare la scansione
+    // corrente (più sotto): altrimenti "vicino a te" rischierebbe di confrontare il
+    // prezzo appena letto con... se stesso.
+    await arricchisciTrend(parsed).catch(() => {
       parsed.trend = { stato: "stabile", n_recenti: 0, n_precedenti: 0 }; // mai vuoto (Compito 4)
+    });
+    await costruisciBandeCasoC(parsed, lat, lng, key).catch(() => {
+      parsed.vicino_a_te = null;
+      parsed.web_stima = null;
     });
 
     // arricchimenti via ricerca web, in parallelo: se qualcosa va storto qui non deve
     // far fallire la lettura già riuscita, al peggio restano le stime "a memoria" del modello.
-    const compiti = [
-      trovaPrezzoConfronto(parsed, key)
-        .then((v) => {
-          parsed.prezzo_confronto = v;
-        })
-        .catch(() => {
-          parsed.prezzo_confronto = {
-            fonte: "solo_letto",
-            valore: null,
-            valuta: "EUR",
-            nota: "Errore nel recupero del prezzo di confronto.",
-          };
-        }),
-    ];
+    const compiti = [];
     if (parsed.esiste_sfuso_equivalente) {
       compiti.push(arricchisciStimaSfuso(parsed, key).catch(() => {}));
     }
@@ -460,7 +408,6 @@ export default async function handler(req, res) {
     );
 
     await Promise.all(compiti);
-    delete parsed._dbConfronto; // uso interno, non va nella risposta al client
 
     return res.status(200).json(parsed);
   } catch (e) {
