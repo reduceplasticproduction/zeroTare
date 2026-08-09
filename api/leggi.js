@@ -23,7 +23,7 @@ I cartellini di macelleria/gastronomia usano spesso termini come "bovino adulto"
 Campi da restituire:
 {
   "nome": string,                      // descrizione prodotto letta dal cartellino
-  "prodotto_chiave": string,           // nome generico normalizzato per abbinare sfuso e confezione dello STESSO prodotto: minuscolo, senza marca/sigle/peso (es. "CPQ UVA BIANCA VITTORIA" e "S&I UVA BIANCA S/SEMI GR.750" danno entrambi "uva bianca"; "ZUCCHINE BIO 500G" dà "zucchine")
+  "prodotto_chiave": string,           // chiave MECCANICA per abbinare sfuso e confezione dello STESSO prodotto. Segui SEMPRE questo procedimento, nell'ordine: (1) individua la categoria/nome generico dell'alimento in italiano, senza marca, senza sigle, senza peso, senza varietà commerciale o taglio specifico (es. "vittoria", "bio", "ovino adulto" si scartano); (2) usa al massimo 2 parole: la categoria base + al massimo 1 aggettivo essenziale che la distingue da altri prodotti della stessa famiglia (es. "uva bianca" non "uva bianca vittoria"; "ossobuco" non "ossobuco ovino adulto"; "pollo" non "pollo fresco italiano"); (3) tutto minuscolo, senza punteggiatura. Esempi: "CPQ UVA BIANCA VITTORIA" e "S&I UVA BIANCA S/SEMI GR.750" danno ENTRAMBI "uva bianca"; "ZUCCHINE BIO 500G" dà "zucchine"; "OSSOBUCO OVINO ADULTO" e "OSSOBUCO DI AGNELLO SFUSO" danno ENTRAMBI "ossobuco". La stessa identica categoria di prodotto deve SEMPRE produrre la stessa identica stringa, scansione dopo scansione: è più importante essere coerenti che essere descrittivi.
   "sfuso": boolean,                    // true se è un cartellino di prodotto SFUSO venduto a peso: prezzo principale espresso "al kg", presenza di "TASTO BILANCIA" o simili, NESSUN peso confezione fisso. false se è una confezione (ha un peso tipo GR.750 e un prezzo fisso della confezione)
   "categoria": string,                 // una tra: verdura, frutta, carne, pesce, salumi, formaggi, pane, pasta, conserve, latticini, dolci, bevande, semilavorato, altro
   "tipo": string,                      // "preincartato" (peso variabile del negozio, barcode che inizia per 2) oppure "industriale" (confezione con barcode GTIN globale)
@@ -281,6 +281,10 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 700,
+        // temperature 0: vogliamo che lo stesso prodotto, fotografato due volte (sfuso e
+        // confezionato), dia la STESSA prodotto_chiave il più possibile — serve per far
+        // scattare il confronto automatico tra le due scansioni.
+        temperature: 0,
         messages: [
           {
             role: "user",

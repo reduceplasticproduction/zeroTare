@@ -26,15 +26,16 @@
   .cta{width:100%; background:var(--verde); color:#04342C; border-radius:28px;
     padding:20px; font-size:28px; font-weight:700; margin-top:12px}
   .ghost{width:100%; background:transparent; color:var(--muto);
-    border:1.5px solid var(--bordo); border-radius:28px; padding:18px; font-size:24px; margin-top:8px}
-  .card{background:var(--card); border:1px solid var(--bordo); border-radius:16px; padding:20px}
+    border:1.5px solid var(--bordo); border-radius:28px; padding:15px; font-size:21px; margin-top:8px}
+  .card{background:var(--card); border:1px solid var(--bordo); border-radius:16px; padding:18px}
   .riga{display:flex; justify-content:space-between; align-items:baseline}
   .hidden{display:none}
-  .voce{border:1px solid var(--bordo); border-radius:14px; padding:16px; margin-bottom:12px}
+  .fineprint{color:var(--rosso-scuro); font-size:18px; line-height:1.35}
+  .voce{border:1px solid var(--bordo); border-radius:14px; padding:14px; margin-bottom:10px}
   .voce.best{border-color:#5DCAA5; background:var(--verde-bg)}
   .voce.pick{border-color:#FAC775; background:var(--ambra-bg)}
   .prezzo{font-size:50px; font-weight:700; line-height:1.15; white-space:nowrap}
-  .btn-voce{width:100%; border-radius:22px; padding:18px; font-size:26px; margin-top:12px}
+  .btn-voce{width:100%; border-radius:22px; padding:16px; font-size:23px; margin-top:10px}
   .btn-scelta{background:var(--verde); color:#04342C; font-weight:700}
   .btn-neutro{background:transparent; color:var(--muto); border:1.5px solid var(--bordo)}
   .lista-item{display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid var(--bordo)}
@@ -256,6 +257,23 @@ function leggiConfezioniPendenti(){ try{ return JSON.parse(localStorage.getItem(
 function salvaConfezionePendente(chiave, dati){ const s=leggiConfezioniPendenti(); s[chiave]=dati; localStorage.setItem("zt_confezioni_pendenti", JSON.stringify(s)); }
 function rimuoviConfezionePendente(chiave){ const s=leggiConfezioniPendenti(); delete s[chiave]; localStorage.setItem("zt_confezioni_pendenti", JSON.stringify(s)); }
 
+// la prodotto_chiave del modello può variare leggermente tra due scansioni dello stesso
+// prodotto (es. "ossobuco" vs "ossobuco ovino"): confrontiamo per parole, non solo per
+// uguaglianza esatta, così lo sfuso registrato prima viene comunque riconosciuto dopo.
+function chiaviCorrispondono(a, b){
+  if(!a || !b) return false;
+  if(a === b) return true;
+  const wa = a.split(/\s+/).filter(Boolean), wb = b.split(/\s+/).filter(Boolean);
+  if(!wa.length || !wb.length) return false;
+  const setB = new Set(wb);
+  const comuni = wa.filter(w=>setB.has(w)).length;
+  return comuni >= Math.min(wa.length, wb.length);
+}
+function trovaChiave(store, chiave){
+  if(Object.prototype.hasOwnProperty.call(store, chiave)) return chiave;
+  return Object.keys(store).find(k => chiaviCorrispondono(k, chiave)) || null;
+}
+
 function mostraVerdetto(d){
   const nome = d.nome || "Prodotto";
   const chiave = (d.prodotto_chiave || d.nome || "").toLowerCase().trim();
@@ -273,11 +291,13 @@ function mostraVerdetto(d){
     </div>`;
 
     // c'era già una confezione dello stesso prodotto in attesa? premiamo la scelta
-    const pendente = leggiConfezioniPendenti()[chiave];
+    const pendenti = leggiConfezioniPendenti();
+    const chiavePendente = trovaChiave(pendenti, chiave);
+    const pendente = chiavePendente ? pendenti[chiavePendente] : null;
     if(pendente && pendente.peso){
       const sfusoEquiv = d.prezzo_al_kg * pendente.peso/1000;
       const risparmio = Math.max(0, pendente.prezzo - sfusoEquiv);
-      rimuoviConfezionePendente(chiave);
+      rimuoviConfezionePendente(chiavePendente);
       html += `<div class="voce" style="border-color:#5DCAA5; background:var(--verde-bg)">
         <div style="font-weight:700; color:var(--verde-scuro); font-size:26px; margin-bottom:6px">✓ Ottima scelta!</div>
         <div class="hint" style="color:var(--verde-scuro)">Per la stessa quantità (${Math.round(pendente.peso)} g) di "${pendente.nome}" che avevi inquadrato confezionata, con lo sfuso risparmi</div>
@@ -289,12 +309,14 @@ function mostraVerdetto(d){
       return;
     }
 
-    html += `<div class="hint">Ho memorizzato il prezzo dello sfuso. Ora inquadra la <b>confezione</b> dello stesso prodotto e ti dico quanto risparmi.</div>`;
+    html += `<div class="hint"><b>Grazie: hai scelto lo sfuso</b>, niente plastica/spazzatura in più per questo prodotto. Se in seguito inquadri anche la confezione dello stesso prodotto, ti mostro subito quanto avresti risparmiato.</div>`;
     box.innerHTML = html + "</div>"; finish([]); return;
   }
 
   // CONFEZIONE con prezzo sfuso REALE già registrato → CASO A vero
-  const looseKg = leggiSfusi()[chiave];
+  const sfusiStore = leggiSfusi();
+  const chiaveSfuso = trovaChiave(sfusiStore, chiave);
+  const looseKg = chiaveSfuso ? sfusiStore[chiaveSfuso] : null;
   if(!d.sfuso && peso && d.prezzo != null && looseKg){
     const pagato = d.prezzo, sfuso = looseKg*peso/1000;
     const risparmio = Math.max(0, pagato - sfuso), plastica = d.tara_g || PESO_CONF_DEF;
@@ -325,7 +347,7 @@ function mostraVerdetto(d){
       html += delta > 0.05
         ? `<div style="font-weight:700; font-size:20px; color:var(--rosso-scuro); margin-top:8px">Stai pagando ${IT(delta)} di plastica/spazzatura.</div>`
         : `<div class="hint" style="margin-top:4px">Qui la confezione è già in linea con la stima dello sfuso.</div>`;
-      html += `<div class="hint" style="color:var(--rosso-scuro); margin-top:6px">${testoFonte(d.stima_sfuso_fonte)}</div>`;
+      html += `<div class="fineprint" style="margin-top:6px">${testoFonte(d.stima_sfuso_fonte)}</div>`;
     } else {
       html += `<div class="hint" style="margin-top:8px">Non ho ancora un riferimento per lo sfuso di questo prodotto.</div>`;
     }
@@ -340,14 +362,14 @@ function mostraVerdetto(d){
     const pagato = d.prezzo, materia = d.stima_materia_prima_al_kg * peso/1000;
     const comodita = Math.max(0, pagato - materia);
     html += voce("questa vaschetta", pagato, "", "", kg(pagato/peso*1000));
-    html += `<div class="voce pick"><div class="hint" style="color:var(--ambra-scuro); margin-bottom:8px">È un semipreparato. La materia prima, da sola, di media costerebbe:</div>
-      <div style="font-size:18px; color:var(--ambra-scuro)">materia prima</div>
+    html += `<div class="voce pick">
+      <div style="font-size:18px; color:var(--ambra-scuro)">materia prima, da sola</div>
       <div style="display:flex; align-items:baseline; flex-wrap:wrap">
         <span class="prezzo" style="color:var(--ambra-scuro)">${IT(materia)}</span>
         <span style="font-size:16px; color:var(--ambra-scuro); margin-left:10px; white-space:nowrap">${kg(d.stima_materia_prima_al_kg)||""}</span>
       </div>
-      <div class="hint" style="color:var(--ambra-scuro); margin-top:8px">Gli altri <b>${IT(comodita)}</b> sono comodità (lavorazione) e imballaggio</div></div>
-      <div class="hint" style="color:var(--rosso-scuro); margin-top:6px">${testoFonte(d.stima_materia_prima_fonte)}</div>`;
+      <div class="hint" style="color:var(--ambra-scuro); margin-top:6px">Il resto, <b>${IT(comodita)}</b>, è comodità e imballaggio</div></div>
+      <div class="fineprint" style="margin-top:6px">${testoFonte(d.stima_materia_prima_fonte)}</div>`;
     box.innerHTML = html + "</div>";
     finish([["Prendo, mi va la comodità", "btn-ambra", {nome,scelta:"preso, comodità",pagato,meglio:materia,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
     return;
@@ -374,9 +396,9 @@ function kg(v){ return (v==null||isNaN(v)) ? null : v.toLocaleString("it-IT",{ma
 // riga rossa, non in grassetto, che dichiara sempre da dove viene una stima: mai un prezzo
 // mostrato come certo senza dire la fonte
 function testoFonte(fonte){
-  if(fonte === "web") return "Prezzo assente dal nostro database: stima trovata con una ricerca sul web, non il prezzo esatto del tuo negozio.";
-  if(fonte === "openprices") return "Prezzo assente dal nostro database: dato reale da OpenPrices (Open Food Facts) — stima nazionale, non necessariamente quella del tuo negozio.";
-  return "Prezzo assente dal nostro database: stima del modello, senza una fonte verificata — può essere imprecisa.";
+  if(fonte === "web") return "Non nel database: stima da ricerca web, non il prezzo del tuo negozio.";
+  if(fonte === "openprices") return "Non nel database: dato reale OpenPrices, media nazionale non locale.";
+  return "Non nel database: stima del modello, nessuna fonte verificata.";
 }
 
 // variant: "" (neutro) | "best" (verde, opzione migliore reale) | "pick" (ambra, stima)
@@ -409,7 +431,7 @@ function renderConfronto(c, pagato){
       <div style="font-size:18px; color:var(--muto)">prezzo medio in Italia</div>
       <div class="prezzo">${IT(c.valore)}</div>
       <div class="hint" style="color:${colore}">${riga}</div>
-      <div class="hint" style="color:var(--rosso-scuro); margin-top:4px">${testoFonte("openprices")}${c.data_piu_recente?` · ultima rilevazione ${c.data_piu_recente}`:""}</div>
+      <div class="fineprint" style="margin-top:4px">${testoFonte("openprices")}${c.data_piu_recente?` · ${c.data_piu_recente}`:""}</div>
     </div>`;
   }
   if(c.fonte === "stima_web" && typeof c.valore === "number"){
@@ -417,7 +439,7 @@ function renderConfronto(c, pagato){
         <div style="font-size:18px; color:var(--ambra-scuro)">il database non ce l'ha ancora: potresti pagarlo</div>
         <div class="prezzo" style="color:var(--ambra-scuro)">${IT(c.valore)}</div>
       </div>
-      <div class="hint" style="color:var(--rosso-scuro); margin-top:6px">${testoFonte("web")}</div>`;
+      <div class="fineprint" style="margin-top:6px">${testoFonte("web")}</div>`;
   }
   // fonte imprevista o senza valore: non blocchiamo la UI, restiamo onesti
   return `<div class="hint center" style="margin-top:6px">${(c&&c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database."}</div>`;
