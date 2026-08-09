@@ -174,8 +174,11 @@ const IT = n => (n==null||isNaN(n)) ? "—" : n.toLocaleString("it-IT",{minimumF
 const $ = id => document.getElementById(id);
 const show = id => ["s-welcome","s-cart","s-load","s-verdetto","s-chiusura","s-guida"].forEach(s=>$(s).classList.toggle("hidden", s!==id));
 
-let carrello = JSON.parse(localStorage.getItem("zt_cart") || "[]");
-const salva = () => localStorage.setItem("zt_cart", JSON.stringify(carrello));
+// Nessuna persistenza per ora: carrello, sfuso registrato e confezioni pendenti vivono
+// solo nella sessione corrente e si azzerano a ogni ricarica della pagina. Salvarli sul
+// dispositivo (o in cloud) è previsto come funzione pro in un secondo tempo.
+let carrello = [];
+const salva = () => {};
 
 // densità plastica indicativa per stimare i grammi buttati quando non c'è la tara letta
 const PESO_CONF_DEF = 8; // g di plastica di una vaschetta tipica, fallback
@@ -249,13 +252,16 @@ function mostraErrore(msg, dett){
 }
 
 // ---- costruzione verdetto secondo il caso ----
-function leggiSfusi(){ try{ return JSON.parse(localStorage.getItem("zt_sfuso")||"{}"); }catch{ return {}; } }
-function salvaSfuso(chiave, kg){ const s=leggiSfusi(); s[chiave]=kg; localStorage.setItem("zt_sfuso", JSON.stringify(s)); }
+// anche questi due, come il carrello, restano solo in memoria per la sessione corrente
+let sfusiRegistrati = {};
+function leggiSfusi(){ return sfusiRegistrati; }
+function salvaSfuso(chiave, kg){ sfusiRegistrati[chiave] = kg; }
 
 // confezioni scansionate in attesa del corrispondente sfuso: se arriva, premiamo la scelta
-function leggiConfezioniPendenti(){ try{ return JSON.parse(localStorage.getItem("zt_confezioni_pendenti")||"{}"); }catch{ return {}; } }
-function salvaConfezionePendente(chiave, dati){ const s=leggiConfezioniPendenti(); s[chiave]=dati; localStorage.setItem("zt_confezioni_pendenti", JSON.stringify(s)); }
-function rimuoviConfezionePendente(chiave){ const s=leggiConfezioniPendenti(); delete s[chiave]; localStorage.setItem("zt_confezioni_pendenti", JSON.stringify(s)); }
+let confezioniPendenti = {};
+function leggiConfezioniPendenti(){ return confezioniPendenti; }
+function salvaConfezionePendente(chiave, dati){ confezioniPendenti[chiave] = dati; }
+function rimuoviConfezionePendente(chiave){ delete confezioniPendenti[chiave]; }
 
 // la prodotto_chiave del modello può variare leggermente tra due scansioni dello stesso
 // prodotto (es. "ossobuco" vs "ossobuco ovino"): confrontiamo per parole, non solo per
