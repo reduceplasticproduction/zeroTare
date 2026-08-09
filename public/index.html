@@ -352,6 +352,8 @@ function mostraVerdetto(d){
       html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, stimaQty, "pick", "", kg(d.stima_sfuso_al_kg));
       html += delta > 0.05
         ? `<div style="font-weight:700; font-size:20px; color:var(--rosso-scuro); margin-top:8px">Stai pagando ${IT(delta)} di plastica/spazzatura.</div>`
+        : delta < -0.05
+        ? `<div class="hint" style="margin-top:4px">Qui la confezione costa già meno della stima per lo sfuso: può succedere, è una stima nazionale, non il prezzo reale del tuo negozio.</div>`
         : `<div class="hint" style="margin-top:4px">Qui la confezione è già in linea con la stima dello sfuso.</div>`;
       html += `<div class="fineprint" style="margin-top:6px">${testoFonte(d.stima_sfuso_fonte)}</div>`;
     } else {
