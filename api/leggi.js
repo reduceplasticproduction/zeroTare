@@ -46,12 +46,20 @@ Regole:
 - Se il peso non è stampato ma ci sono prezzo e prezzo_al_kg, calcolalo: peso_netto_g = prezzo/prezzo_al_kg*1000.
 - Rispondi SOLO con il JSON.`;
 
-// ---- CASO C (confezionato industriale): prezzo di confronto a tre livelli ----
-// 1) Open Prices (prezzo reale, filtrato sull'Italia)
-// 2) ricerca web con Claude (stima onesta, nazionale non locale)
-// 3) niente: resta solo il prezzo letto sul cartellino
+// ---- REGOLA GENERALE per qualunque prezzo di confronto mostrato in app ----
+// 1) database ZeroTare: prezzo reale già registrato dall'utente in questa spesa
+//    (vedi sfusiRegistrati/confezioniPendenti lato client in public/index.html).
+//    NB: oggi è solo la sessione corrente, non ancora un database condiviso tra
+//    tutti gli utenti — quello arriverà con un backend persistente (funzione pro).
+// 2) Open Prices: prezzo reale, filtrato sull'Italia (solo per prodotti con barcode
+//    industriale: uno sfuso non ha un barcode globale da cercare lì).
+// 3) ricerca web: MAI il primo prezzo trovato. Si cercano almeno TRE prezzi da fonti
+//    diverse, aggiornati nelle ultime 48 ore, e si usa quello (vedi DOMANDA_* sotto).
+// 4) solo se anche la ricerca web non trova nulla di verificabile: nessun confronto,
+//    resta solo il prezzo letto sul cartellino. Mai un numero inventato "a memoria".
 //
-// Il campo aggiunto al risultato è `prezzo_confronto`:
+// Per CASO C (confezionato industriale) il campo aggiunto al risultato è
+// `prezzo_confronto`:
 //   { fonte: "openprices"|"stima_web"|"solo_letto", valore: number|null,
 //     valuta: "EUR", nota: string, ...dettagli specifici della fonte }
 
@@ -113,7 +121,7 @@ async function cercaStimaWeb(domanda, key) {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1024,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
         messages: [{ role: "user", content: domanda }],
       }),
     });
@@ -143,43 +151,69 @@ async function cercaStimaWeb(domanda, key) {
   }
 }
 
-const DOMANDA_PREZZO_TIPICO = (nome) => `Cerca sul web a quanto si vende oggi in Italia, in un supermercato, il
-prodotto "${nome}". Usa listini online, e-commerce di supermercati o negozi italiani, siti di
-comparazione prezzi. Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza backtick,
-in questa forma esatta:
+const DOMANDA_PREZZO_TIPICO = (nome) => `Cerca sul web a quanto si trova oggi in vendita online in Italia il
+prodotto "${nome}". NON limitarti ai supermercati: cerca anche su siti di comparazione prezzi (Trovaprezzi,
+idealo, Google Shopping), farmacie/parafarmacie online, profumerie online, e-commerce generalisti — ovunque
+il prodotto sia realmente acquistabile. Fai ricerche multiple e raccogli il prezzo ATTUALE (aggiornato nelle
+ultime 48 ore, non un dato vecchio o una pagina cache) di ALMENO TRE venditori/fonti diversi prima di
+rispondere: non fermarti al primo prezzo che trovi, un solo dato non basta a fare un confronto onesto. Se
+dopo ricerche oneste trovi meno di tre fonti aggiornate e verificabili, dillo nel campo "fonte" invece di
+inventare. Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza backtick, in questa
+forma esatta:
 {"valore_eur": number|null, "fonte": string|null}
 
 Regole:
-- valore_eur: la tua migliore stima in euro del prezzo di vendita al pubblico in Italia. Metti null
-  se non trovi nulla di ragionevolmente attendibile: mai un numero inventato.
-- fonte: breve descrizione testuale di dove hai trovato l'informazione (es. "prezzo medio da siti di
-  supermercati italiani"), null se valore_eur è null.
+- valore_eur: confronta i prezzi delle almeno tre fonti trovate (tutte aggiornate alle ultime 48 ore) e
+  prendi il più basso tra quelli verificati (non un prezzo "di listino" o consigliato dal produttore, che è
+  quasi sempre più alto di quello realmente pagato). Se trovi più prezzi simili tra loro usa quello
+  mediano-basso; se un solo prezzo è nettamente più basso degli altri come probabile promozione isolata,
+  preferisci comunque il secondo più basso per non essere ottimistico. Scarta come outlier un prezzo
+  palesemente fuori scala rispetto agli altri (es. molto più alto per una variante premium/bio non richiesta):
+  meglio tre fonti coerenti tra loro che una isolata e anomala. Metti null se la ricerca non restituisce nulla
+  di verificabile: mai un numero a memoria/inventato.
+- Questo numero serve a dire all'utente "stai pagando più o meno del normale": deve riflettere cosa
+  realisticamente si trova cercando, non una media prudente verso l'alto.
+- fonte: breve descrizione testuale di dove hai trovato l'informazione (es. "trovaprezzi.it e idealo.it,
+  fascia 2,20-2,50€"), null se valore_eur è null.
 - È una stima NAZIONALE: non hai modo di sapere il prezzo nel negozio specifico dell'utente, quindi non
   inventare un negozio o una zona geografica precisa.
 - Rispondi SOLO con il JSON.`;
 
 const DOMANDA_SFUSO_KG = (nome) => `Cerca sul web il prezzo al kg dello stesso prodotto "${nome}" venduto
 SFUSO, cioè a peso variabile (banco frutta/verdura, macelleria, gastronomia), in un supermercato in Italia.
-Usa listini online, e-commerce di supermercati italiani, siti di comparazione prezzi. Rispondi SOLO con un
-oggetto JSON valido, senza testo prima o dopo, senza backtick, in questa forma esatta:
+Usa listini online, e-commerce di supermercati italiani, siti di comparazione prezzi. Fai ricerche multiple
+e confronta ALMENO TRE fonti/venditori diversi, con prezzi ATTUALI aggiornati nelle ultime 48 ore (non un
+dato vecchio o una pagina cache), prima di rispondere: non fermarti al primo prezzo che trovi. Se dopo
+ricerche oneste trovi meno di tre fonti aggiornate e verificabili, dillo nel campo "fonte" invece di
+inventare. Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza backtick, in questa
+forma esatta:
 {"valore_eur": number|null, "fonte": string|null}
 
 Regole:
-- valore_eur: la tua migliore stima del prezzo al kg (es. 2.5) dello stesso prodotto venduto sfuso. Metti
-  null se non trovi nulla di ragionevolmente attendibile: mai un numero inventato.
+- valore_eur: confronta le almeno tre fonti trovate (tutte aggiornate alle ultime 48 ore) e dai la tua
+  migliore stima del prezzo al kg (es. 2.5) dello stesso prodotto venduto sfuso, usando il valore
+  mediano-basso tra quelli trovati. Scarta come outlier un prezzo palesemente fuori scala rispetto agli
+  altri (es. una varietà premium/bio quando il cartellino non lo specifica): meglio tre fonti coerenti che
+  una isolata e anomala. Metti null se non trovi nulla di ragionevolmente attendibile: mai un numero
+  inventato.
 - fonte: breve descrizione testuale di dove hai trovato l'informazione, null se valore_eur è null.
 - È una stima NAZIONALE, non del negozio specifico dell'utente.
 - Rispondi SOLO con il JSON.`;
 
 const DOMANDA_MATERIA_PRIMA_KG = (nome) => `Cerca sul web il prezzo al kg della materia prima grezza
 principale usata per preparare "${nome}" (es. per delle alette condite, il pollo crudo; per uno spiedino,
-la carne cruda) venduta in un supermercato in Italia. Rispondi SOLO con un oggetto JSON valido, senza testo
-prima o dopo, senza backtick, in questa forma esatta:
+la carne cruda) venduta in un supermercato in Italia. Fai ricerche multiple e confronta ALMENO TRE fonti/
+venditori diversi, con prezzi ATTUALI aggiornati nelle ultime 48 ore (non un dato vecchio o una pagina
+cache), prima di rispondere: non fermarti al primo prezzo che trovi. Se dopo ricerche oneste trovi meno di
+tre fonti aggiornate e verificabili, dillo nel campo "fonte" invece di inventare. Rispondi SOLO con un
+oggetto JSON valido, senza testo prima o dopo, senza backtick, in questa forma esatta:
 {"valore_eur": number|null, "fonte": string|null}
 
 Regole:
-- valore_eur: la tua migliore stima del prezzo al kg della materia prima cruda. Metti null se non trovi
-  nulla di ragionevolmente attendibile: mai un numero inventato.
+- valore_eur: confronta le almeno tre fonti trovate (tutte aggiornate alle ultime 48 ore) e dai la tua
+  migliore stima del prezzo al kg della materia prima cruda, usando il valore mediano-basso tra quelli
+  trovati. Scarta come outlier un prezzo palesemente fuori scala rispetto agli altri. Metti null se non
+  trovi nulla di ragionevolmente attendibile: mai un numero inventato.
 - fonte: breve descrizione testuale di dove hai trovato l'informazione, null se valore_eur è null.
 - Rispondi SOLO con il JSON.`;
 
@@ -200,32 +234,35 @@ async function cercaPrezzoWeb(parsed, key) {
   };
 }
 
-// rinforza stima_sfuso_al_kg (dato dalla lettura iniziale, "a memoria" del modello) con
-// un dato cercato sul web in tempo reale: più affidabile per un confronto che l'utente
-// userà davvero per decidere cosa comprare.
+// sostituisce stima_sfuso_al_kg (dato "a memoria" dalla lettura iniziale, senza ricerca)
+// con un dato cercato sul web in tempo reale, verificato su almeno tre fonti aggiornate:
+// più affidabile per un confronto che l'utente userà davvero per decidere cosa comprare.
+// Se la ricerca non trova nulla di verificabile NON si torna al numero a memoria: meglio
+// nessun confronto che un prezzo inventato mostrato come fosse una stima (regola generale
+// dei prezzi di confronto, vedi commento in cima al file).
 async function arricchisciStimaSfuso(parsed, key) {
   if (!parsed || !parsed.esiste_sfuso_equivalente) return;
   const nome = parsed.nome || parsed.prodotto_chiave;
-  if (!nome) return;
+  if (!nome) { parsed.stima_sfuso_al_kg = null; return; }
   const r = await cercaStimaWeb(DOMANDA_SFUSO_KG(nome), key);
   if (r && typeof r.valore === "number") {
     parsed.stima_sfuso_al_kg = r.valore;
     parsed.stima_sfuso_fonte = "web";
-  } else if (parsed.stima_sfuso_al_kg != null) {
-    parsed.stima_sfuso_fonte = "modello";
+  } else {
+    parsed.stima_sfuso_al_kg = null;
   }
 }
 
 async function arricchisciStimaMateriaPrima(parsed, key) {
   if (!parsed || !parsed.e_semilavorato) return;
   const nome = parsed.nome || parsed.prodotto_chiave;
-  if (!nome) return;
+  if (!nome) { parsed.stima_materia_prima_al_kg = null; return; }
   const r = await cercaStimaWeb(DOMANDA_MATERIA_PRIMA_KG(nome), key);
   if (r && typeof r.valore === "number") {
     parsed.stima_materia_prima_al_kg = r.valore;
     parsed.stima_materia_prima_fonte = "web";
-  } else if (parsed.stima_materia_prima_al_kg != null) {
-    parsed.stima_materia_prima_fonte = "modello";
+  } else {
+    parsed.stima_materia_prima_al_kg = null;
   }
 }
 

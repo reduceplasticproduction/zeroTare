@@ -286,7 +286,9 @@ function mostraVerdetto(d){
   const peso = d.peso_netto_g || (d.prezzo && d.prezzo_al_kg ? d.prezzo/d.prezzo_al_kg*1000 : null);
   const box = $("verdetto-body");
   let html = `<div class="card"><div style="font-weight:700; font-size:24px">${nome}</div>`;
-  if(peso && !d.sfuso) html += `<div class="hint" style="margin-bottom:12px">${Math.round(peso)} g</div>`;
+  // il peso, quando c'è, va a fianco della prima etichetta prezzo (es. "questa confezione ·
+  // 214 g") invece che su una riga tutta sua: si recupera spazio verticale.
+  const conPeso = etichetta => (peso && !d.sfuso) ? `${etichetta} · ${Math.round(peso)} g` : etichetta;
 
   // CARTELLINO SFUSO (al kg, tasto bilancia) → registro il prezzo per il confronto
   if(d.sfuso && d.prezzo_al_kg){
@@ -316,7 +318,32 @@ function mostraVerdetto(d){
     }
 
     html += `<div class="hint"><b>Grazie: hai scelto lo sfuso</b>, niente plastica/spazzatura in più per questo prodotto. Se in seguito inquadri anche la confezione dello stesso prodotto, ti mostro subito quanto avresti risparmiato.</div>`;
-    box.innerHTML = html + "</div>"; finish([]); return;
+    // per aggiungerlo alla spesa di oggi serve sapere quanto ne ha preso: mai assumere
+    // una quantità (es. 1 kg) che non ha detto lui.
+    html += `<div class="voce" style="margin-top:14px">
+      <div style="font-size:18px; color:var(--muto)">quanti grammi ne prendi?</div>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:8px">
+        <input type="number" id="qty-sfuso" inputmode="decimal" min="1" placeholder="es. 500"
+          style="flex:1; font-size:26px; padding:12px 14px; border-radius:12px; border:1.5px solid var(--bordo); font-family:inherit; width:100%">
+        <span style="font-size:20px; color:var(--muto)">g</span>
+      </div>
+    </div>`;
+    box.innerHTML = html + "</div>";
+    const inputQty = $("qty-sfuso");
+    const bAgg = document.createElement("button");
+    bAgg.className = "btn-voce btn-scelta";
+    bAgg.textContent = "Aggiungo al carrello";
+    const provaAggiungi = () => {
+      const g = parseFloat((inputQty.value || "").replace(",", "."));
+      if(!g || g<=0){ inputQty.focus(); return; }
+      const pagato = d.prezzo_al_kg * g/1000;
+      aggiungi({nome, scelta:"sfuso", pagato, meglio:pagato, peggio:pagato, plastica:0, evitata:0});
+    };
+    bAgg.addEventListener("click", provaAggiungi);
+    inputQty.addEventListener("keydown", e => { if(e.key==="Enter") provaAggiungi(); });
+    box.appendChild(bAgg);
+    show("s-verdetto");
+    return;
   }
 
   // CONFEZIONE con prezzo sfuso REALE già registrato → CASO A vero
@@ -326,7 +353,7 @@ function mostraVerdetto(d){
   if(!d.sfuso && peso && d.prezzo != null && looseKg){
     const pagato = d.prezzo, sfuso = looseKg*peso/1000;
     const risparmio = Math.max(0, pagato - sfuso), plastica = d.tara_g || PESO_CONF_DEF;
-    html += voce("questa confezione", pagato, "",
+    html += voce(conPeso("questa confezione"), pagato, "",
         risparmio>0.02?`<div style="font-size:19px; color:var(--rosso-scuro)">${IT(risparmio)} in più qui</div>`:"",
         kg(pagato/peso*1000));
     html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, sfuso, "best", `<div style="font-size:19px; color:var(--verde)">rilevato da te</div>`, kg(looseKg));
@@ -342,7 +369,7 @@ function mostraVerdetto(d){
   // avere una risposta fa abbandonare l'app all'istante.
   if(!d.sfuso && peso && d.prezzo != null && d.esiste_sfuso_equivalente && !d.e_semilavorato){
     const pagato = d.prezzo;
-    html += voce("questa confezione", pagato, "", "", kg(pagato/peso*1000));
+    html += voce(conPeso("questa confezione"), pagato, "", "", kg(pagato/peso*1000));
     // salvo comunque la confezione: se in seguito arriva lo sfuso vero, mostro il risparmio esatto
     salvaConfezionePendente(chiave, {nome, prezzo:pagato, peso, plastica:d.tara_g||PESO_CONF_DEF});
 
@@ -369,14 +396,14 @@ function mostraVerdetto(d){
   if(d.e_semilavorato && d.stima_materia_prima_al_kg && peso){
     const pagato = d.prezzo, materia = d.stima_materia_prima_al_kg * peso/1000;
     const comodita = Math.max(0, pagato - materia);
-    html += voce("questa vaschetta", pagato, "", "", kg(pagato/peso*1000));
+    html += voce(conPeso("questa vaschetta"), pagato, "", "", kg(pagato/peso*1000));
     html += `<div class="voce pick">
       <div style="font-size:18px; color:var(--ambra-scuro)">materia prima, da sola</div>
       <div style="display:flex; align-items:baseline; flex-wrap:wrap">
         <span class="prezzo" style="color:var(--ambra-scuro)">${IT(materia)}</span>
         <span style="font-size:16px; color:var(--ambra-scuro); margin-left:10px; white-space:nowrap">${kg(d.stima_materia_prima_al_kg)||""}</span>
       </div>
-      <div class="hint" style="color:var(--ambra-scuro); margin-top:6px">Il resto, <b>${IT(comodita)}</b>, è comodità e imballaggio</div></div>
+      <div class="hint" style="color:var(--ambra-scuro); margin-top:6px">Il resto, <b>${IT(comodita)}</b>, è comodità e plastica/spazzatura</div></div>
       <div class="fineprint" style="margin-top:6px">${testoFonte(d.stima_materia_prima_fonte)}</div>`;
     box.innerHTML = html + "</div>";
     finish([["Prendo, mi va la comodità", "btn-ambra", {nome,scelta:"preso, comodità",pagato,meglio:materia,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
@@ -390,7 +417,7 @@ function mostraVerdetto(d){
       html += `<div class="hint">Ho riconosciuto il prodotto ma non sono riuscito a leggere il prezzo. Riprova con il cartellino ben a fuoco e dritto.</div>`;
       box.innerHTML = html + "</div>"; finish([]); return;
     }
-    html += voce("qui", pagato, "", "", peso ? kg(pagato/peso*1000) : null);
+    html += voce(conPeso("qui"), pagato, "", "", peso ? kg(pagato/peso*1000) : null);
     html += renderConfronto(d.prezzo_confronto, pagato);
     box.innerHTML = html + "</div>";
     finish([["Aggiungo al carrello", "btn-scelta", {nome,scelta:"preso",pagato,meglio:pagato,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
