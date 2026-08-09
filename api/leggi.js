@@ -3,13 +3,22 @@
 // i campi estratti in JSON. La chiave API sta nelle variabili d'ambiente di
 // Vercel (ANTHROPIC_API_KEY), MAI nel codice.
 
-const MODEL = process.env.ZT_MODEL || "claude-haiku-4-5-20251001"; // sovrascrivibile da Vercel
+// Modello più capace di Haiku sulla lettura di etichette piccole/sfocate: la qualità
+// dell'OCR è la priorità qui, la latenza in più è accettabile. Sovrascrivibile da Vercel.
+const MODEL = process.env.ZT_MODEL || "claude-sonnet-5";
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
 
 const PROMPT = `Sei il motore di lettura di ZeroTare. Ricevi la foto di un CARTELLINO PREZZO
 di supermercato (a scaffale o preincartato al banco). Leggi tutto ciò che riesci,
 anche se la foto è ruotata o storta, e rispondi SOLO con un oggetto JSON valido,
 senza testo prima o dopo, senza backtick.
+
+Leggi il testo lettera per lettera, con la massima attenzione, prima di rispondere.
+Non sostituire una parola poco chiara con un'altra parola simile che ti sembra plausibile:
+se una lettera o una parola non è leggibile con certezza, prova a dedurla dal contesto
+del cartellino (tipo di banco, altre parole vicine), ma non inventare un nome di fantasia.
+I cartellini di macelleria/gastronomia usano spesso termini come "bovino adulto", "suino",
+"ovino", "rucola", "pinoli", "peperoni": leggili con cura, non storpiarli in parole senza senso.
 
 Campi da restituire:
 {
@@ -86,25 +95,10 @@ async function cercaOpenPrices(barcode) {
   }
 }
 
-const PROMPT_PREZZO_WEB = (nome) => `Cerca sul web a quanto si vende oggi in Italia, in un supermercato, il
-prodotto "${nome}". Usa listini online, e-commerce di supermercati o negozi italiani, siti di
-comparazione prezzi. Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza backtick,
-in questa forma esatta:
-{"prezzo_tipico_eur": number|null, "fonte": string|null}
-
-Regole:
-- prezzo_tipico_eur: la tua migliore stima in euro del prezzo di vendita al pubblico in Italia. Metti null
-  se non trovi nulla di ragionevolmente attendibile: mai un numero inventato.
-- fonte: breve descrizione testuale di dove hai trovato l'informazione (es. "prezzo medio da siti di
-  supermercati italiani"), null se prezzo_tipico_eur è null.
-- È una stima NAZIONALE: non hai modo di sapere il prezzo nel negozio specifico dell'utente, quindi non
-  inventare un negozio o una zona geografica precisa.
-- Rispondi SOLO con il JSON.`;
-
-async function cercaPrezzoWeb(parsed, key) {
-  const nome = parsed.nome || parsed.prodotto_chiave;
-  if (!nome) return null;
-
+// ---- helper generico: una domanda + ricerca web → {valore, fonte_testo} ----
+// Usato sia per il prezzo tipico dei confezionati (caso C) sia per rinforzare le stime
+// di sfuso/materia prima con un dato cercato in tempo reale invece che "a memoria".
+async function cercaStimaWeb(domanda, key) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
@@ -120,7 +114,7 @@ async function cercaPrezzoWeb(parsed, key) {
         model: MODEL,
         max_tokens: 1024,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
-        messages: [{ role: "user", content: PROMPT_PREZZO_WEB(nome) }],
+        messages: [{ role: "user", content: domanda }],
       }),
     });
     if (!r.ok) return null;
@@ -140,18 +134,8 @@ async function cercaPrezzoWeb(parsed, key) {
     } catch {
       return null;
     }
-    if (typeof obj.prezzo_tipico_eur !== "number") return null;
-
-    return {
-      fonte: "stima_web",
-      valore: Math.round(obj.prezzo_tipico_eur * 100) / 100,
-      valuta: "EUR",
-      dettaglio_fonte: obj.fonte || null,
-      nota:
-        "Non ho ancora un prezzo reale per questo prodotto: dalla ricerca web, potresti pagarlo circa " +
-        "questa cifra. È una stima di prezzo tipico nazionale — il web non dice cosa costa \"nella tua " +
-        "zona\" — non il prezzo esatto del tuo negozio.",
-    };
+    if (typeof obj.valore_eur !== "number") return null;
+    return { valore: Math.round(obj.valore_eur * 100) / 100, fonte_testo: obj.fonte || null };
   } catch {
     return null;
   } finally {
@@ -159,9 +143,100 @@ async function cercaPrezzoWeb(parsed, key) {
   }
 }
 
+const DOMANDA_PREZZO_TIPICO = (nome) => `Cerca sul web a quanto si vende oggi in Italia, in un supermercato, il
+prodotto "${nome}". Usa listini online, e-commerce di supermercati o negozi italiani, siti di
+comparazione prezzi. Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, senza backtick,
+in questa forma esatta:
+{"valore_eur": number|null, "fonte": string|null}
+
+Regole:
+- valore_eur: la tua migliore stima in euro del prezzo di vendita al pubblico in Italia. Metti null
+  se non trovi nulla di ragionevolmente attendibile: mai un numero inventato.
+- fonte: breve descrizione testuale di dove hai trovato l'informazione (es. "prezzo medio da siti di
+  supermercati italiani"), null se valore_eur è null.
+- È una stima NAZIONALE: non hai modo di sapere il prezzo nel negozio specifico dell'utente, quindi non
+  inventare un negozio o una zona geografica precisa.
+- Rispondi SOLO con il JSON.`;
+
+const DOMANDA_SFUSO_KG = (nome) => `Cerca sul web il prezzo al kg dello stesso prodotto "${nome}" venduto
+SFUSO, cioè a peso variabile (banco frutta/verdura, macelleria, gastronomia), in un supermercato in Italia.
+Usa listini online, e-commerce di supermercati italiani, siti di comparazione prezzi. Rispondi SOLO con un
+oggetto JSON valido, senza testo prima o dopo, senza backtick, in questa forma esatta:
+{"valore_eur": number|null, "fonte": string|null}
+
+Regole:
+- valore_eur: la tua migliore stima del prezzo al kg (es. 2.5) dello stesso prodotto venduto sfuso. Metti
+  null se non trovi nulla di ragionevolmente attendibile: mai un numero inventato.
+- fonte: breve descrizione testuale di dove hai trovato l'informazione, null se valore_eur è null.
+- È una stima NAZIONALE, non del negozio specifico dell'utente.
+- Rispondi SOLO con il JSON.`;
+
+const DOMANDA_MATERIA_PRIMA_KG = (nome) => `Cerca sul web il prezzo al kg della materia prima grezza
+principale usata per preparare "${nome}" (es. per delle alette condite, il pollo crudo; per uno spiedino,
+la carne cruda) venduta in un supermercato in Italia. Rispondi SOLO con un oggetto JSON valido, senza testo
+prima o dopo, senza backtick, in questa forma esatta:
+{"valore_eur": number|null, "fonte": string|null}
+
+Regole:
+- valore_eur: la tua migliore stima del prezzo al kg della materia prima cruda. Metti null se non trovi
+  nulla di ragionevolmente attendibile: mai un numero inventato.
+- fonte: breve descrizione testuale di dove hai trovato l'informazione, null se valore_eur è null.
+- Rispondi SOLO con il JSON.`;
+
+async function cercaPrezzoWeb(parsed, key) {
+  const nome = parsed.nome || parsed.prodotto_chiave;
+  if (!nome) return null;
+  const r = await cercaStimaWeb(DOMANDA_PREZZO_TIPICO(nome), key);
+  if (!r) return null;
+  return {
+    fonte: "stima_web",
+    valore: r.valore,
+    valuta: "EUR",
+    dettaglio_fonte: r.fonte_testo,
+    nota:
+      "Non ho ancora un prezzo reale per questo prodotto: dalla ricerca web, potresti pagarlo circa " +
+      "questa cifra. È una stima di prezzo tipico nazionale — il web non dice cosa costa \"nella tua " +
+      "zona\" — non il prezzo esatto del tuo negozio.",
+  };
+}
+
+// rinforza stima_sfuso_al_kg (dato dalla lettura iniziale, "a memoria" del modello) con
+// un dato cercato sul web in tempo reale: più affidabile per un confronto che l'utente
+// userà davvero per decidere cosa comprare.
+async function arricchisciStimaSfuso(parsed, key) {
+  if (!parsed || !parsed.esiste_sfuso_equivalente) return;
+  const nome = parsed.nome || parsed.prodotto_chiave;
+  if (!nome) return;
+  const r = await cercaStimaWeb(DOMANDA_SFUSO_KG(nome), key);
+  if (r && typeof r.valore === "number") {
+    parsed.stima_sfuso_al_kg = r.valore;
+    parsed.stima_sfuso_fonte = "web";
+  } else if (parsed.stima_sfuso_al_kg != null) {
+    parsed.stima_sfuso_fonte = "modello";
+  }
+}
+
+async function arricchisciStimaMateriaPrima(parsed, key) {
+  if (!parsed || !parsed.e_semilavorato) return;
+  const nome = parsed.nome || parsed.prodotto_chiave;
+  if (!nome) return;
+  const r = await cercaStimaWeb(DOMANDA_MATERIA_PRIMA_KG(nome), key);
+  if (r && typeof r.valore === "number") {
+    parsed.stima_materia_prima_al_kg = r.valore;
+    parsed.stima_materia_prima_fonte = "web";
+  } else if (parsed.stima_materia_prima_al_kg != null) {
+    parsed.stima_materia_prima_fonte = "modello";
+  }
+}
+
 async function trovaPrezzoConfronto(parsed, key) {
-  if (!parsed || parsed.in_ambito === false) return null;
-  if (parsed.tipo !== "industriale") return null; // la scala vale solo per il caso C
+  if (!parsed) return null;
+  // Il confronto tra negozi/web vale per i prodotti "caso C": confezioni con barcode
+  // industriale, alimentari o no (es. un deodorante). Per questi non esiste uno sfuso
+  // equivalente, quindi il confronto utile è "quanto costa altrove" — non escludiamo più
+  // i non alimentari: anche per loro il database utenti parte vuoto e la ricerca web
+  // dà comunque un riferimento onesto invece di rifiutare il prodotto.
+  if (parsed.tipo !== "industriale") return null;
 
   let risultato = null;
   if (parsed.barcode) {
@@ -246,19 +321,29 @@ export default async function handler(req, res) {
       parsed.peso_netto_g = Math.round((parsed.prezzo / parsed.prezzo_al_kg) * 1000);
     }
 
-    // caso C (confezionato industriale): prezzo di confronto a tre livelli.
-    // Se qualcosa va storto qui non deve far fallire la lettura già riuscita:
-    // al peggio parsed.prezzo_confronto resta "solo_letto".
-    try {
-      parsed.prezzo_confronto = await trovaPrezzoConfronto(parsed, key);
-    } catch {
-      parsed.prezzo_confronto = {
-        fonte: "solo_letto",
-        valore: null,
-        valuta: "EUR",
-        nota: "Errore nel recupero del prezzo di confronto.",
-      };
+    // arricchimenti via ricerca web, in parallelo: se qualcosa va storto qui non deve
+    // far fallire la lettura già riuscita, al peggio restano le stime "a memoria" del modello.
+    const compiti = [
+      trovaPrezzoConfronto(parsed, key)
+        .then((v) => {
+          parsed.prezzo_confronto = v;
+        })
+        .catch(() => {
+          parsed.prezzo_confronto = {
+            fonte: "solo_letto",
+            valore: null,
+            valuta: "EUR",
+            nota: "Errore nel recupero del prezzo di confronto.",
+          };
+        }),
+    ];
+    if (parsed.esiste_sfuso_equivalente) {
+      compiti.push(arricchisciStimaSfuso(parsed, key).catch(() => {}));
     }
+    if (parsed.e_semilavorato) {
+      compiti.push(arricchisciStimaMateriaPrima(parsed, key).catch(() => {}));
+    }
+    await Promise.all(compiti);
 
     return res.status(200).json(parsed);
   } catch (e) {

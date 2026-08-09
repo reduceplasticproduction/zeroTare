@@ -17,37 +17,40 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--pag); color:var(--ink); line-height:1.5;
+    background:var(--pag); color:var(--ink); line-height:1.5; font-size:18px;
     padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
-  .wrap{max-width:480px; margin:0 auto; padding:16px}
-  h1{font-size:19px; font-weight:600; margin:4px 0 0}
-  .muto{color:var(--muto)} .hint{color:var(--hint); font-size:12px}
+  .wrap{max-width:520px; margin:0 auto; padding:16px}
+  h1{font-size:36px; font-weight:700; margin:4px 0 0}
+  .muto{color:var(--muto)} .hint{color:var(--hint); font-size:24px; line-height:1.4}
   button{font-family:inherit; cursor:pointer; border:none}
-  .cta{width:100%; background:var(--verde); color:#04342C; border-radius:24px;
-    padding:14px; font-size:15px; font-weight:600; margin-top:12px}
+  .cta{width:100%; background:var(--verde); color:#04342C; border-radius:28px;
+    padding:20px; font-size:28px; font-weight:700; margin-top:12px}
   .ghost{width:100%; background:transparent; color:var(--muto);
-    border:1px solid var(--bordo); border-radius:24px; padding:12px; font-size:14px; margin-top:8px}
-  .card{background:var(--card); border:1px solid var(--bordo); border-radius:14px; padding:16px}
+    border:1.5px solid var(--bordo); border-radius:28px; padding:18px; font-size:24px; margin-top:8px}
+  .card{background:var(--card); border:1px solid var(--bordo); border-radius:16px; padding:20px}
   .riga{display:flex; justify-content:space-between; align-items:baseline}
   .hidden{display:none}
-  .voce{border:1px solid var(--bordo); border-radius:12px; padding:12px; margin-bottom:10px}
+  .voce{border:1px solid var(--bordo); border-radius:14px; padding:16px; margin-bottom:12px}
   .voce.best{border-color:#5DCAA5; background:var(--verde-bg)}
   .voce.pick{border-color:#FAC775; background:var(--ambra-bg)}
-  .prezzo{font-size:26px; font-weight:600}
-  .btn-voce{width:100%; border-radius:20px; padding:11px; font-size:14px; margin-top:10px}
-  .btn-scelta{background:var(--verde); color:#04342C; font-weight:600}
-  .btn-neutro{background:transparent; color:var(--muto); border:1px solid var(--bordo)}
-  .lista-item{display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--bordo)}
-  .badge{font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600}
-  .loader{text-align:center; padding:48px 0; color:var(--muto)}
-  .spin{width:26px;height:26px;border:3px solid var(--bordo);border-top-color:var(--verde);
+  .prezzo{font-size:50px; font-weight:700}
+  .btn-voce{width:100%; border-radius:22px; padding:18px; font-size:26px; margin-top:12px}
+  .btn-scelta{background:var(--verde); color:#04342C; font-weight:700}
+  .btn-neutro{background:transparent; color:var(--muto); border:1.5px solid var(--bordo)}
+  .lista-item{display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid var(--bordo)}
+  .badge{font-size:20px; padding:3px 10px; border-radius:10px; font-weight:700}
+  .loader{text-align:center; padding:48px 0; color:var(--muto); font-size:26px}
+  .spin{width:32px;height:32px;border:4px solid var(--bordo);border-top-color:var(--verde);
     border-radius:50%; animation:s 0.8s linear infinite; margin:0 auto 14px}
   @keyframes s{to{transform:rotate(360deg)}}
-  .bar{position:relative; height:44px; border-radius:22px;
+  .bar{position:relative; height:92px; border-radius:22px;
     background:linear-gradient(90deg,#E1F5EE,#FAEEDA,#FAECE7); margin:6px 0}
   .tick{position:absolute; top:-6px; bottom:-6px; width:3px; background:var(--ink); border-radius:2px}
   .center{text-align:center}
-  .vuoto{text-align:center; color:var(--hint); padding:30px 10px; font-size:14px}
+  .vuoto{text-align:center; color:var(--hint); padding:30px 10px; font-size:26px}
+  .icon-btn{position:absolute; top:16px; right:16px; width:52px; height:52px; border-radius:50%;
+    background:rgba(255,255,255,0.14); color:#fff; font-size:28px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; border:1.5px solid rgba(255,255,255,0.4)}
   input[type=file]{display:none}
 </style>
 </head>
@@ -56,20 +59,20 @@
 
   <!-- ===== BENVENUTO ===== -->
   <section id="s-welcome">
-    <div style="background:#04342C; border-radius:20px; padding:32px 22px; min-height:78vh; display:flex; flex-direction:column; justify-content:space-between; text-align:center">
-      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:22px">
+    <div style="position:relative; background:#04342C; border-radius:20px; padding:32px 22px; min-height:78vh; display:flex; flex-direction:column; justify-content:space-between; text-align:center">
+      <button id="btn-guida" class="icon-btn" aria-label="Come si usa · problemi con la fotocamera?">?</button>
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:26px">
         <img src="/logo.png" alt="ZeroTare" style="width:150px; height:150px; object-fit:contain" />
-        <div style="font-size:20px; color:#fff; line-height:1.4; font-weight:600; max-width:280px">Smetti di pagare<br>per la spazzatura.</div>
-        <div style="text-align:left; max-width:290px; display:flex; flex-direction:column; gap:14px; margin-top:4px">
-          <div style="display:flex; gap:12px; align-items:flex-start"><span style="color:#5DCAA5; font-size:18px">◉</span><span style="color:#9FE1CB; font-size:14px; line-height:1.45">Inquadra il cartellino di un prodotto.</span></div>
-          <div style="display:flex; gap:12px; align-items:flex-start"><span style="color:#5DCAA5; font-size:18px">⚖</span><span style="color:#9FE1CB; font-size:14px; line-height:1.45">Scopri quanto paghi davvero di plastica e di comodità.</span></div>
-          <div style="display:flex; gap:12px; align-items:flex-start"><span style="color:#5DCAA5; font-size:18px">◎</span><span style="color:#9FE1CB; font-size:14px; line-height:1.45">Scegli meglio. E se lo facessimo tutti, cambierebbe il mercato.</span></div>
+        <div style="font-size:40px; color:#fff; line-height:1.3; font-weight:700; max-width:320px">Smetti di pagare<br>per la spazzatura.</div>
+        <div style="text-align:left; max-width:340px; display:flex; flex-direction:column; gap:18px; margin-top:4px">
+          <div style="display:flex; gap:14px; align-items:flex-start"><span style="color:#5DCAA5; font-size:34px">◉</span><span style="color:#9FE1CB; font-size:26px; line-height:1.4">Inquadra il cartellino di un prodotto.</span></div>
+          <div style="display:flex; gap:14px; align-items:flex-start"><span style="color:#5DCAA5; font-size:34px">⚖</span><span style="color:#9FE1CB; font-size:26px; line-height:1.4">Scopri quanto paghi davvero di plastica e di comodità.</span></div>
+          <div style="display:flex; gap:14px; align-items:flex-start"><span style="color:#5DCAA5; font-size:34px">◎</span><span style="color:#9FE1CB; font-size:26px; line-height:1.4">Scegli meglio. E se lo facessimo tutti, cambierebbe il mercato.</span></div>
         </div>
       </div>
       <div>
         <button class="cta" id="btn-inizia" style="margin-top:0">Inizia</button>
-        <div style="color:#5DCAA5; font-size:12px; margin-top:12px">Gratis · nessun account · funziona da telefono</div>
-        <button id="btn-guida" style="background:transparent; border:none; color:#9FE1CB; font-size:13px; margin-top:14px; text-decoration:underline">Come si usa · problemi con la fotocamera?</button>
+        <div style="color:#5DCAA5; font-size:22px; margin-top:14px">Gratis · nessun account · funziona da telefono</div>
       </div>
     </div>
   </section>
@@ -78,7 +81,7 @@
   <section id="s-cart">
     <div class="riga" style="align-items:center">
       <div><h1>ZeroTare</h1><div class="hint">Spesa di oggi</div></div>
-      <div class="center"><div class="prezzo" id="cart-tot" style="font-size:22px">0,00 €</div><div class="hint">totale</div></div>
+      <div class="center"><div class="prezzo" id="cart-tot" style="font-size:40px">0,00 €</div><div class="hint">totale</div></div>
     </div>
     <div id="cart-lista" style="margin-top:14px"></div>
     <label class="cta" style="display:block; text-align:center" for="file">+ Aggiungi prodotto</label>
@@ -94,9 +97,9 @@
     </div>
 
     <div class="card" style="border-left:3px solid var(--rosso); margin-bottom:12px">
-      <div style="font-weight:600">📷 La fotocamera resta nera?</div>
+      <div style="font-weight:700; font-size:26px">📷 La fotocamera resta nera?</div>
       <div class="hint" style="margin-top:8px">È quasi sempre un permesso da dare al sito.</div>
-      <div style="margin-top:10px; font-size:13px; line-height:1.6">
+      <div style="margin-top:10px; font-size:24px; line-height:1.6">
         <b>iPhone (Safari):</b> Impostazioni → Safari → Fotocamera → “Consenti”. Poi ricarica la pagina.<br>
         <b>Android (Chrome):</b> tocca il lucchetto accanto all’indirizzo → Autorizzazioni → Fotocamera → “Consenti”.<br>
         Se non basta, chiudi del tutto il browser e altre app che usano la fotocamera, poi riapri.
@@ -104,21 +107,21 @@
     </div>
 
     <div class="card" style="margin-bottom:12px">
-      <div style="font-weight:600">Il confronto in due scatti</div>
-      <div style="margin-top:8px; font-size:13px; line-height:1.6">
+      <div style="font-weight:700; font-size:26px">Il confronto in due scatti</div>
+      <div style="margin-top:8px; font-size:24px; line-height:1.6">
         1. Inquadra prima il cartellino dello <b>sfuso</b> (prezzo “al kg”, banco frutta/verdura o al taglio). L’app registra il prezzo.<br>
         2. Poi inquadra la <b>confezione</b> dello stesso prodotto. L’app ti dice quanto risparmi comprando sfuso.
       </div>
     </div>
 
     <div class="card" style="margin-bottom:12px">
-      <div style="font-weight:600">Cosa fa ZeroTare</div>
+      <div style="font-weight:700; font-size:26px">Cosa fa ZeroTare</div>
       <div class="hint" style="margin-top:8px">Confronta cibo <b>sfuso</b> e <b>confezionato</b> e ti mostra quanto paghi in più per plastica e comodità. Alla fine della spesa vedi il bilancio e la plastica evitata.</div>
     </div>
 
     <div class="card">
-      <div style="font-weight:600">Cosa non fa (ancora)</div>
-      <div class="hint" style="margin-top:8px">Prodotti non alimentari (detersivi, deodoranti) sono fuori raggio. Per i confezionati di marca il confronto tra negozi arriverà quando ci saranno abbastanza scansioni. Alcuni numeri sono <b>stime</b>, marcate come tali: diventano precisi man mano che l’app cresce.</div>
+      <div style="font-weight:700; font-size:26px">Cosa non fa (ancora)</div>
+      <div class="hint" style="margin-top:8px">Per i prodotti non alimentari e per i confezionati di marca che nessun altro utente ha ancora scansionato, il confronto usa una <b>stima da ricerca web</b> (segnalata come tale), non il prezzo esatto del tuo negozio: diventa più preciso man mano che il database costruito dagli utenti cresce.</div>
     </div>
   </section>
 
@@ -138,22 +141,22 @@
     <div class="card">
       <div class="center" style="margin-bottom:16px">
         <div class="hint">Questa spesa ti è costata</div>
-        <div class="prezzo" style="font-size:32px" id="c-speso">0,00 €</div>
+        <div class="prezzo" style="font-size:58px" id="c-speso">0,00 €</div>
       </div>
       <div class="bar" id="c-bar">
-        <div style="position:absolute; left:12px; top:9px; text-align:left">
-          <div style="font-size:13px; font-weight:600; color:var(--verde-scuro)" id="c-margine">−0,00 €</div>
-          <div style="font-size:11px; color:var(--verde)" id="c-meglio">meglio 0,00 €</div>
+        <div style="position:absolute; left:12px; top:10px; text-align:left">
+          <div style="font-size:26px; font-weight:700; color:var(--verde-scuro)" id="c-margine">−0,00 €</div>
+          <div style="font-size:20px; color:var(--verde)" id="c-meglio">meglio 0,00 €</div>
         </div>
-        <div style="position:absolute; right:12px; top:9px; text-align:right">
-          <div style="font-size:13px; font-weight:600; color:var(--rosso-scuro)" id="c-risparmio-t">+0,00 €</div>
-          <div style="font-size:11px; color:var(--rosso-scuro)" id="c-peggio">peggio 0,00 €</div>
+        <div style="position:absolute; right:12px; top:10px; text-align:right">
+          <div style="font-size:26px; font-weight:700; color:var(--rosso-scuro)" id="c-risparmio-t">+0,00 €</div>
+          <div style="font-size:20px; color:var(--rosso-scuro)" id="c-peggio">peggio 0,00 €</div>
         </div>
         <div class="tick" id="c-tick" style="left:50%"></div>
       </div>
-      <div class="riga hint" style="margin-bottom:16px"><span>tutto sfuso / più economico</span><span>tutto confezionato</span></div>
-      <div style="background:var(--verde-bg); border-radius:12px; padding:14px" class="center">
-        <div style="font-size:13px; color:var(--verde-scuro)">Le tue scelte hanno risparmiato</div>
+      <div class="riga hint" style="margin-bottom:16px; flex-wrap:wrap; gap:6px"><span>tutto sfuso / più economico</span><span>tutto confezionato</span></div>
+      <div style="background:var(--verde-bg); border-radius:12px; padding:16px" class="center">
+        <div style="font-size:24px; color:var(--verde-scuro)">Le tue scelte hanno risparmiato</div>
         <div class="prezzo" style="color:var(--verde-scuro)" id="c-risparmio">0,00 €</div>
       </div>
       <div class="center" style="margin-top:14px; padding:0 4px">
@@ -214,9 +217,9 @@ $("file").addEventListener("change", async e => {
   }catch(err){ mostraErrore("Non ho potuto inviare la foto", String(err && err.message || err)); }
 });
 
-// rimpicciolisce la foto (lato max 1280px, JPEG) prima di inviarla: evita il
-// limite di dimensione di Vercel e velocizza la lettura
-function fotoRidotta(file, maxDim=1280, q=0.72){
+// rimpicciolisce la foto (lato max 1600px, JPEG qualità alta) prima di inviarla: resta
+// sotto il limite di dimensione di Vercel ma lascia leggibile il testo piccolo delle etichette
+function fotoRidotta(file, maxDim=1600, q=0.85){
   return new Promise((resolve, reject)=>{
     const img = new Image(); const url = URL.createObjectURL(file);
     img.onload = ()=>{
@@ -236,9 +239,9 @@ function fotoRidotta(file, maxDim=1280, q=0.72){
 
 function mostraErrore(msg, dett){
   $("verdetto-body").innerHTML = `<div class="card">
-    <div style="font-weight:600; color:var(--rosso)">Non sono riuscito a leggere il cartellino</div>
+    <div style="font-weight:700; font-size:26px; color:var(--rosso)">Non sono riuscito a leggere il cartellino</div>
     <div class="hint" style="margin-top:8px">${(""+msg).replace(/</g,"&lt;")}</div>
-    ${dett?`<div class="hint" style="margin-top:10px; background:var(--pag); padding:10px; border-radius:8px; word-break:break-word; font-family:monospace; font-size:11px">${(""+dett).replace(/</g,"&lt;")}</div>`:""}
+    ${dett?`<div class="hint" style="margin-top:10px; background:var(--pag); padding:10px; border-radius:8px; word-break:break-word; font-family:monospace; font-size:16px">${(""+dett).replace(/</g,"&lt;")}</div>`:""}
     <div class="hint" style="margin-top:10px">Riprova con più luce e il cartellino ben dritto nell'inquadratura.</div>
   </div>`;
   show("s-verdetto");
@@ -248,24 +251,41 @@ function mostraErrore(msg, dett){
 function leggiSfusi(){ try{ return JSON.parse(localStorage.getItem("zt_sfuso")||"{}"); }catch{ return {}; } }
 function salvaSfuso(chiave, kg){ const s=leggiSfusi(); s[chiave]=kg; localStorage.setItem("zt_sfuso", JSON.stringify(s)); }
 
+// confezioni scansionate in attesa del corrispondente sfuso: se arriva, premiamo la scelta
+function leggiConfezioniPendenti(){ try{ return JSON.parse(localStorage.getItem("zt_confezioni_pendenti")||"{}"); }catch{ return {}; } }
+function salvaConfezionePendente(chiave, dati){ const s=leggiConfezioniPendenti(); s[chiave]=dati; localStorage.setItem("zt_confezioni_pendenti", JSON.stringify(s)); }
+function rimuoviConfezionePendente(chiave){ const s=leggiConfezioniPendenti(); delete s[chiave]; localStorage.setItem("zt_confezioni_pendenti", JSON.stringify(s)); }
+
 function mostraVerdetto(d){
   const nome = d.nome || "Prodotto";
   const chiave = (d.prodotto_chiave || d.nome || "").toLowerCase().trim();
   const peso = d.peso_netto_g || (d.prezzo && d.prezzo_al_kg ? d.prezzo/d.prezzo_al_kg*1000 : null);
   const box = $("verdetto-body");
-  let html = `<div class="card"><div style="font-weight:600">${nome}</div>`;
+  let html = `<div class="card"><div style="font-weight:700; font-size:28px">${nome}</div>`;
   if(peso && !d.sfuso) html += `<div class="hint" style="margin-bottom:12px">${Math.round(peso)} g</div>`;
-
-  // FUORI AMBITO — non alimentare
-  if(d.in_ambito === false){
-    html += `<div class="hint">Questo prodotto è fuori dal raggio di ZeroTare: per ora confrontiamo cibo sfuso e confezionato, non gli articoli non alimentari.</div>`;
-    box.innerHTML = html + "</div>"; finish([]); return;
-  }
 
   // CARTELLINO SFUSO (al kg, tasto bilancia) → registro il prezzo per il confronto
   if(d.sfuso && d.prezzo_al_kg){
     salvaSfuso(chiave, d.prezzo_al_kg);
     html += `<div class="voce best"><div class="riga"><span style="color:var(--verde-scuro)">sfuso registrato</span><span class="prezzo" style="color:var(--verde-scuro)">${d.prezzo_al_kg.toLocaleString("it-IT")} €/kg</span></div></div>`;
+
+    // c'era già una confezione dello stesso prodotto in attesa? premiamo la scelta
+    const pendente = leggiConfezioniPendenti()[chiave];
+    if(pendente && pendente.peso){
+      const sfusoEquiv = d.prezzo_al_kg * pendente.peso/1000;
+      const risparmio = Math.max(0, pendente.prezzo - sfusoEquiv);
+      rimuoviConfezionePendente(chiave);
+      html += `<div class="voce" style="border-color:#5DCAA5; background:var(--verde-bg)">
+        <div style="font-weight:700; color:var(--verde-scuro); font-size:26px; margin-bottom:6px">✓ Ottima scelta!</div>
+        <div class="hint" style="color:var(--verde-scuro)">Per la stessa quantità (${Math.round(pendente.peso)} g) di "${pendente.nome}" che avevi inquadrato confezionata, con lo sfuso risparmi</div>
+        <div class="prezzo" style="color:var(--verde-scuro); margin-top:4px">${IT(risparmio)}</div>
+      </div>`;
+      box.innerHTML = html + "</div>";
+      finish([["Aggiungo lo sfuso al carrello · risparmio "+IT(risparmio), "btn-scelta",
+        {nome,scelta:"scelto sfuso",pagato:sfusoEquiv,meglio:sfusoEquiv,peggio:pendente.prezzo,plastica:0,evitata:pendente.plastica||PESO_CONF_DEF}]]);
+      return;
+    }
+
     html += `<div class="hint">Ho memorizzato il prezzo dello sfuso. Ora inquadra la <b>confezione</b> dello stesso prodotto e ti dico quanto risparmi.</div>`;
     box.innerHTML = html + "</div>"; finish([]); return;
   }
@@ -288,7 +308,15 @@ function mostraVerdetto(d){
   // CONFEZIONE con equivalente sfuso ma prezzo reale NON ancora rilevato → invito a scansionarlo
   if(!d.sfuso && peso && d.prezzo != null && d.esiste_sfuso_equivalente && !d.e_semilavorato){
     html += voce("questa confezione", d.prezzo, false, "");
-    html += `<div class="hint">Per sapere quanto risparmi davvero, inquadra ora il cartellino dello <b>sfuso</b> (prezzo al kg) dello stesso prodotto.${d.stima_sfuso_al_kg?` A occhio lo sfuso costa ~${d.stima_sfuso_al_kg.toLocaleString("it-IT")} €/kg, ma il prezzo vero del tuo negozio conta di più.`:""}</div>`;
+    const fonteTxt = d.stima_sfuso_fonte === "web" ? " (da una ricerca web)" : d.stima_sfuso_al_kg ? " (stima)" : "";
+    const stimaTxt = d.stima_sfuso_al_kg
+      ? ` A occhio lo sfuso costa circa <b>${d.stima_sfuso_al_kg.toLocaleString("it-IT")} €/kg</b>${fonteTxt}, ma il prezzo del tuo negozio conta di più.`
+      : "";
+    html += `<div class="hint" style="background:var(--ambra-bg); color:var(--ambra-scuro); border-radius:12px; padding:14px; margin-top:8px">
+      <b>Ti consiglio lo sfuso: di solito costa meno.</b>${stimaTxt} Inquadra ora il cartellino dello sfuso per il confronto esatto.
+    </div>`;
+    // salvo la confezione: se arriva lo sfuso corrispondente, mostro subito il risparmio
+    salvaConfezionePendente(chiave, {nome, prezzo:d.prezzo, peso, plastica:d.tara_g||PESO_CONF_DEF});
     box.innerHTML = html + "</div>";
     finish([["Aggiungo comunque la confezione", "btn-neutro", {nome,scelta:"confezione",pagato:d.prezzo,meglio:d.prezzo,peggio:d.prezzo,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
     return;
@@ -301,7 +329,7 @@ function mostraVerdetto(d){
     html += voce("questa vaschetta", pagato, false, "");
     html += `<div class="voce pick"><div class="hint" style="color:var(--ambra-scuro); margin-bottom:8px">È un semipreparato. La materia prima, da sola, di media costerebbe:</div>
       <div class="riga"><span style="color:var(--ambra-scuro)">materia prima</span><span class="prezzo" style="color:var(--ambra-scuro)">${IT(materia)}</span></div>
-      <div class="hint" style="color:var(--ambra-scuro); margin-top:8px">Gli altri <b>${IT(comodita)}</b> sono comodità (lavorazione) e imballaggio · stima</div></div>`;
+      <div class="hint" style="color:var(--ambra-scuro); margin-top:8px">Gli altri <b>${IT(comodita)}</b> sono comodità (lavorazione) e imballaggio · stima${d.stima_materia_prima_fonte==="web"?" da ricerca web":""}</div></div>`;
     box.innerHTML = html + "</div>";
     finish([["Prendo, mi va la comodità", "btn-ambra", {nome,scelta:"preso, comodità",pagato,meglio:materia,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
     return;
@@ -348,7 +376,8 @@ function renderConfronto(c, pagato){
   }
   if(c.fonte === "stima_web" && typeof c.valore === "number"){
     return `<div class="hint center" style="margin-top:6px; color:var(--ambra-scuro)">
-      Non ho ancora un prezzo reale per questo prodotto: dalla ricerca web potresti pagarlo circa
+      Il database di ZeroTare è costruito dagli utenti e questo prodotto non è ancora presente.
+      Un riferimento trovato sul web mi dice che potresti pagarlo circa
       <b>${IT(c.valore)}</b> — stima nazionale, non necessariamente il prezzo del tuo negozio.
     </div>`;
   }
