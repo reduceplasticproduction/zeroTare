@@ -40,10 +40,12 @@
   .btn-neutro{background:transparent; color:var(--muto); border:1.5px solid var(--bordo)}
   .lista-item{display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid var(--bordo)}
   .badge{font-size:20px; padding:3px 10px; border-radius:10px; font-weight:700}
-  .loader{text-align:center; padding:48px 0; color:var(--muto); font-size:26px}
-  .spin{width:32px;height:32px;border:4px solid var(--bordo);border-top-color:var(--verde);
-    border-radius:50%; animation:s 0.8s linear infinite; margin:0 auto 14px}
-  @keyframes s{to{transform:rotate(360deg)}}
+  .loader{text-align:center; padding:56px 0; color:var(--muto); font-size:26px}
+  .bilancia{width:88px; height:88px; object-fit:contain; margin:0 auto 20px;
+    transform-origin:50% 20%; animation:pesa 1.15s ease-in-out infinite}
+  @keyframes pesa{0%,100%{transform:rotate(-10deg)} 50%{transform:rotate(10deg)}}
+  #load-testo{transition:opacity .25s ease}
+  #load-testo.sfuma{opacity:0}
   .bar{position:relative; height:92px; border-radius:22px;
     background:linear-gradient(90deg,#E1F5EE,#FAEEDA,#FAECE7); margin:6px 0}
   .tick{position:absolute; top:-6px; bottom:-6px; width:3px; background:var(--ink); border-radius:2px}
@@ -128,7 +130,10 @@
 
   <!-- ===== CARICAMENTO ===== -->
   <section id="s-load" class="hidden">
-    <div class="loader"><div class="spin"></div>Sto leggendo il cartellino…</div>
+    <div class="loader">
+      <img src="/logo.png" alt="" class="bilancia" />
+      <div id="load-testo">Leggo il cartellino…</div>
+    </div>
   </section>
 
   <!-- ===== VERDETTO ===== -->
@@ -172,7 +177,27 @@
 <script>
 const IT = n => (n==null||isNaN(n)) ? "—" : n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
 const $ = id => document.getElementById(id);
-const show = id => ["s-welcome","s-cart","s-load","s-verdetto","s-chiusura","s-guida"].forEach(s=>$(s).classList.toggle("hidden", s!==id));
+const show = id => {
+  ["s-welcome","s-cart","s-load","s-verdetto","s-chiusura","s-guida"].forEach(s=>$(s).classList.toggle("hidden", s!==id));
+  if(id === "s-load") avviaCaricamento(); else fermaCaricamento();
+};
+
+// ---- schermata di attesa: logo che "pesa" + testi a fasi, per far percepire meno i
+// secondi dell'attesa (lettura cartellino + eventuale ricerca prezzo di confronto) ----
+const FASI_CARICAMENTO = ["Leggo il cartellino…", "Cerco il prezzo…", "Preparo il confronto…"];
+let timerCaricamento = null;
+function avviaCaricamento(){
+  fermaCaricamento();
+  let i = 0;
+  const el = $("load-testo");
+  el.textContent = FASI_CARICAMENTO[0];
+  timerCaricamento = setInterval(() => {
+    i = (i + 1) % FASI_CARICAMENTO.length;
+    el.classList.add("sfuma");
+    setTimeout(() => { el.textContent = FASI_CARICAMENTO[i]; el.classList.remove("sfuma"); }, 250);
+  }, 1700);
+}
+function fermaCaricamento(){ if(timerCaricamento){ clearInterval(timerCaricamento); timerCaricamento = null; } }
 
 // Nessuna persistenza per ora: carrello, sfuso registrato e confezioni pendenti vivono
 // solo nella sessione corrente e si azzerano a ogni ricarica della pagina. Salvarli sul
@@ -451,7 +476,12 @@ function mostraVerdetto(d){
   {
     const pagato = d.prezzo;
     if(pagato == null){
-      html += `<div class="hint">Ho riconosciuto il prodotto ma non sono riuscito a leggere il prezzo. Riprova con il cartellino ben a fuoco e dritto.</div>`;
+      // prodotto riconosciuto (c'è un nome) ma il prezzo non è su questo cartellino —
+      // caso diverso dalla foto illeggibile (nessun dato letto), che resta il messaggio
+      // "riprova": qui serve dire all'utente cosa inquadrare invece.
+      html += d.nome
+        ? `<div class="hint">Ho letto il prodotto ma su questo cartellino non c'è il prezzo. Inquadra il cartellino con il prezzo al kg.</div>`
+        : `<div class="hint">Ho riconosciuto il prodotto ma non sono riuscito a leggere il prezzo. Riprova con il cartellino ben a fuoco e dritto.</div>`;
       box.innerHTML = html + "</div>"; finish([]); return;
     }
     html += voce(conPeso("qui"), pagato, "", "", peso ? kg(pagato/peso*1000) : null, d.trend);
@@ -530,7 +560,7 @@ function renderConfronto(c, pagato){
         <div style="font-size:18px; color:var(--ambra-scuro)">il database non ce l'ha ancora: potresti pagarlo</div>
         <div class="prezzo" style="color:var(--ambra-scuro)">${IT(c.valore)}</div>
       </div>
-      <div class="fineprint" style="margin-top:6px">${testoFonte("web")}</div>`;
+      <div class="fineprint" style="margin-top:6px">Prezzo stimato da una ricerca sul web. Sei il primo a scansionare questo prodotto. Grazie.</div>`;
   }
   // fonte imprevista o senza valore: non blocchiamo la UI, restiamo onesti
   return `<div class="hint center" style="margin-top:6px">${(c&&c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database."}</div>`;
