@@ -33,7 +33,7 @@
   .voce{border:1px solid var(--bordo); border-radius:14px; padding:16px; margin-bottom:12px}
   .voce.best{border-color:#5DCAA5; background:var(--verde-bg)}
   .voce.pick{border-color:#FAC775; background:var(--ambra-bg)}
-  .prezzo{font-size:50px; font-weight:700}
+  .prezzo{font-size:50px; font-weight:700; white-space:nowrap}
   .btn-voce{width:100%; border-radius:22px; padding:18px; font-size:26px; margin-top:12px}
   .btn-scelta{background:var(--verde); color:#04342C; font-weight:700}
   .btn-neutro{background:transparent; color:var(--muto); border:1.5px solid var(--bordo)}
@@ -60,19 +60,19 @@
   <!-- ===== BENVENUTO ===== -->
   <section id="s-welcome">
     <div style="position:relative; background:#04342C; border-radius:20px; padding:32px 22px; min-height:78vh; display:flex; flex-direction:column; justify-content:space-between; text-align:center">
-      <button id="btn-guida" class="icon-btn" aria-label="Come si usa · problemi con la fotocamera?">?</button>
-      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:26px">
-        <img src="/logo.png" alt="ZeroTare" style="width:150px; height:150px; object-fit:contain" />
-        <div style="font-size:40px; color:#fff; line-height:1.3; font-weight:700; max-width:320px">Smetti di pagare<br>per la spazzatura.</div>
-        <div style="text-align:left; max-width:340px; display:flex; flex-direction:column; gap:18px; margin-top:4px">
-          <div style="display:flex; gap:14px; align-items:flex-start"><span style="color:#5DCAA5; font-size:34px">◉</span><span style="color:#9FE1CB; font-size:26px; line-height:1.4">Inquadra il cartellino di un prodotto.</span></div>
-          <div style="display:flex; gap:14px; align-items:flex-start"><span style="color:#5DCAA5; font-size:34px">⚖</span><span style="color:#9FE1CB; font-size:26px; line-height:1.4">Scopri quanto paghi davvero di plastica e di comodità.</span></div>
-          <div style="display:flex; gap:14px; align-items:flex-start"><span style="color:#5DCAA5; font-size:34px">◎</span><span style="color:#9FE1CB; font-size:26px; line-height:1.4">Scegli meglio. E se lo facessimo tutti, cambierebbe il mercato.</span></div>
+      <button id="btn-guida" class="icon-btn" aria-label="Come si usa · problemi con la fotocamera?" style="width:44px; height:44px; font-size:22px">?</button>
+      <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:16px">
+        <img src="/logo.png" alt="ZeroTare" style="width:104px; height:104px; object-fit:contain" />
+        <div style="font-size:29px; color:#fff; line-height:1.25; font-weight:700; max-width:300px">Smetti di pagare<br>per la spazzatura.</div>
+        <div style="text-align:left; max-width:320px; display:flex; flex-direction:column; gap:12px; margin-top:4px">
+          <div style="display:flex; gap:12px; align-items:flex-start"><span style="color:#5DCAA5; font-size:22px">◉</span><span style="color:#9FE1CB; font-size:18px; line-height:1.35">Inquadra il cartellino di un prodotto.</span></div>
+          <div style="display:flex; gap:12px; align-items:flex-start"><span style="color:#5DCAA5; font-size:22px">⚖</span><span style="color:#9FE1CB; font-size:18px; line-height:1.35">Scopri quanto paghi davvero di plastica/spazzatura e di comodità.</span></div>
+          <div style="display:flex; gap:12px; align-items:flex-start"><span style="color:#5DCAA5; font-size:22px">◎</span><span style="color:#9FE1CB; font-size:18px; line-height:1.35">Scegli meglio. E se lo facessimo tutti, cambierebbe il mercato.</span></div>
         </div>
       </div>
       <div>
-        <button class="cta" id="btn-inizia" style="margin-top:0">Inizia</button>
-        <div style="color:#5DCAA5; font-size:22px; margin-top:14px">Gratis · nessun account · funziona da telefono</div>
+        <button class="cta" id="btn-inizia" style="margin-top:0; padding:15px; font-size:21px">Inizia</button>
+        <div style="color:#5DCAA5; font-size:15px; margin-top:10px">Gratis · nessun account · funziona da telefono</div>
       </div>
     </div>
   </section>
@@ -116,7 +116,7 @@
 
     <div class="card" style="margin-bottom:12px">
       <div style="font-weight:700; font-size:26px">Cosa fa ZeroTare</div>
-      <div class="hint" style="margin-top:8px">Confronta cibo <b>sfuso</b> e <b>confezionato</b> e ti mostra quanto paghi in più per plastica e comodità. Alla fine della spesa vedi il bilancio e la plastica evitata.</div>
+      <div class="hint" style="margin-top:8px">Confronta cibo <b>sfuso</b> e <b>confezionato</b> e ti mostra quanto paghi in più per plastica/spazzatura e comodità. Alla fine della spesa vedi il bilancio e la plastica/spazzatura evitata.</div>
     </div>
 
     <div class="card">
@@ -267,7 +267,10 @@ function mostraVerdetto(d){
   // CARTELLINO SFUSO (al kg, tasto bilancia) → registro il prezzo per il confronto
   if(d.sfuso && d.prezzo_al_kg){
     salvaSfuso(chiave, d.prezzo_al_kg);
-    html += `<div class="voce best"><div class="riga"><span style="color:var(--verde-scuro)">sfuso registrato</span><span class="prezzo" style="color:var(--verde-scuro)">${d.prezzo_al_kg.toLocaleString("it-IT")} €/kg</span></div></div>`;
+    html += `<div class="voce best">
+      <div style="font-size:18px; color:var(--verde-scuro)">sfuso registrato</div>
+      <div class="prezzo" style="color:var(--verde-scuro)">${d.prezzo_al_kg.toLocaleString("it-IT")} €/kg</div>
+    </div>`;
 
     // c'era già una confezione dello stesso prodotto in attesa? premiamo la scelta
     const pendente = leggiConfezioniPendenti()[chiave];
@@ -295,9 +298,10 @@ function mostraVerdetto(d){
   if(!d.sfuso && peso && d.prezzo != null && looseKg){
     const pagato = d.prezzo, sfuso = looseKg*peso/1000;
     const risparmio = Math.max(0, pagato - sfuso), plastica = d.tara_g || PESO_CONF_DEF;
-    html += voce("questa confezione", pagato, false,
-        risparmio>0.02?`<div class="hint" style="color:var(--rosso-scuro)">${IT(risparmio)} in più, per la confezione</div>`:"");
-    html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, sfuso, true, `<div class="hint" style="color:var(--verde)">${looseKg.toLocaleString("it-IT")} €/kg · rilevato da te</div>`);
+    html += voce("questa confezione", pagato, "",
+        risparmio>0.02?`<div class="hint" style="color:var(--rosso-scuro)">${IT(risparmio)} in più, per la confezione</div>`:"",
+        kg(pagato/peso*1000));
+    html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, sfuso, "best", `<div class="hint" style="color:var(--verde)">rilevato da te</div>`, kg(looseKg));
     box.innerHTML = html + "</div>";
     finish([
       ["Prendo lo sfuso · risparmio "+IT(risparmio), "btn-scelta", {nome,scelta:"scelto sfuso",pagato:sfuso,meglio:sfuso,peggio:pagato,plastica:0,evitata:plastica}],
@@ -305,20 +309,29 @@ function mostraVerdetto(d){
     ]); return;
   }
 
-  // CONFEZIONE con equivalente sfuso ma prezzo reale NON ancora rilevato → invito a scansionarlo
+  // CONFEZIONE con equivalente sfuso ma prezzo reale NON ancora rilevato → confronto stimato
+  // subito, senza costringere a un'altra scansione: chiedere "inquadra anche lo sfuso" per
+  // avere una risposta fa abbandonare l'app all'istante.
   if(!d.sfuso && peso && d.prezzo != null && d.esiste_sfuso_equivalente && !d.e_semilavorato){
-    html += voce("questa confezione", d.prezzo, false, "");
-    const fonteTxt = d.stima_sfuso_fonte === "web" ? " (da una ricerca web)" : d.stima_sfuso_al_kg ? " (stima)" : "";
-    const stimaTxt = d.stima_sfuso_al_kg
-      ? ` A occhio lo sfuso costa circa <b>${d.stima_sfuso_al_kg.toLocaleString("it-IT")} €/kg</b>${fonteTxt}, ma il prezzo del tuo negozio conta di più.`
-      : "";
-    html += `<div class="hint" style="background:var(--ambra-bg); color:var(--ambra-scuro); border-radius:12px; padding:14px; margin-top:8px">
-      <b>Ti consiglio lo sfuso: di solito costa meno.</b>${stimaTxt} Inquadra ora il cartellino dello sfuso per il confronto esatto.
-    </div>`;
-    // salvo la confezione: se arriva lo sfuso corrispondente, mostro subito il risparmio
-    salvaConfezionePendente(chiave, {nome, prezzo:d.prezzo, peso, plastica:d.tara_g||PESO_CONF_DEF});
+    const pagato = d.prezzo;
+    html += voce("questa confezione", pagato, "", "", kg(pagato/peso*1000));
+    // salvo comunque la confezione: se in seguito arriva lo sfuso vero, mostro il risparmio esatto
+    salvaConfezionePendente(chiave, {nome, prezzo:pagato, peso, plastica:d.tara_g||PESO_CONF_DEF});
+
+    if(d.stima_sfuso_al_kg){
+      const stimaQty = d.stima_sfuso_al_kg * peso/1000;
+      const delta = pagato - stimaQty;
+      html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, stimaQty, "pick", "", kg(d.stima_sfuso_al_kg));
+      html += delta > 0.05
+        ? `<div style="font-weight:700; font-size:20px; color:var(--rosso-scuro); margin-top:8px">Stai pagando ${IT(delta)} di plastica/spazzatura.</div>`
+        : `<div class="hint" style="margin-top:4px">Qui la confezione è già in linea con la stima dello sfuso.</div>`;
+      html += `<div class="hint" style="color:var(--rosso-scuro); margin-top:6px">${testoFonte(d.stima_sfuso_fonte)}</div>`;
+    } else {
+      html += `<div class="hint" style="margin-top:8px">Non ho ancora un riferimento per lo sfuso di questo prodotto.</div>`;
+    }
+
     box.innerHTML = html + "</div>";
-    finish([["Aggiungo comunque la confezione", "btn-neutro", {nome,scelta:"confezione",pagato:d.prezzo,meglio:d.prezzo,peggio:d.prezzo,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
+    finish([["Aggiungo la confezione", "btn-neutro", {nome,scelta:"confezione",pagato,meglio:pagato,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
     return;
   }
 
@@ -326,10 +339,15 @@ function mostraVerdetto(d){
   if(d.e_semilavorato && d.stima_materia_prima_al_kg && peso){
     const pagato = d.prezzo, materia = d.stima_materia_prima_al_kg * peso/1000;
     const comodita = Math.max(0, pagato - materia);
-    html += voce("questa vaschetta", pagato, false, "");
+    html += voce("questa vaschetta", pagato, "", "", kg(pagato/peso*1000));
     html += `<div class="voce pick"><div class="hint" style="color:var(--ambra-scuro); margin-bottom:8px">È un semipreparato. La materia prima, da sola, di media costerebbe:</div>
-      <div class="riga"><span style="color:var(--ambra-scuro)">materia prima</span><span class="prezzo" style="color:var(--ambra-scuro)">${IT(materia)}</span></div>
-      <div class="hint" style="color:var(--ambra-scuro); margin-top:8px">Gli altri <b>${IT(comodita)}</b> sono comodità (lavorazione) e imballaggio · stima${d.stima_materia_prima_fonte==="web"?" da ricerca web":""}</div></div>`;
+      <div style="font-size:18px; color:var(--ambra-scuro)">materia prima</div>
+      <div style="display:flex; align-items:baseline; flex-wrap:wrap">
+        <span class="prezzo" style="color:var(--ambra-scuro)">${IT(materia)}</span>
+        <span style="font-size:16px; color:var(--ambra-scuro); margin-left:10px; white-space:nowrap">${kg(d.stima_materia_prima_al_kg)||""}</span>
+      </div>
+      <div class="hint" style="color:var(--ambra-scuro); margin-top:8px">Gli altri <b>${IT(comodita)}</b> sono comodità (lavorazione) e imballaggio</div></div>
+      <div class="hint" style="color:var(--rosso-scuro); margin-top:6px">${testoFonte(d.stima_materia_prima_fonte)}</div>`;
     box.innerHTML = html + "</div>";
     finish([["Prendo, mi va la comodità", "btn-ambra", {nome,scelta:"preso, comodità",pagato,meglio:materia,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
     return;
@@ -342,7 +360,7 @@ function mostraVerdetto(d){
       html += `<div class="hint">Ho riconosciuto il prodotto ma non sono riuscito a leggere il prezzo. Riprova con il cartellino ben a fuoco e dritto.</div>`;
       box.innerHTML = html + "</div>"; finish([]); return;
     }
-    html += voce("qui", pagato, false, "");
+    html += voce("qui", pagato, "", "", peso ? kg(pagato/peso*1000) : null);
     html += renderConfronto(d.prezzo_confronto, pagato);
     box.innerHTML = html + "</div>";
     finish([["Aggiungo al carrello", "btn-scelta", {nome,scelta:"preso",pagato,meglio:pagato,peggio:pagato,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
@@ -350,10 +368,29 @@ function mostraVerdetto(d){
   }
 }
 
-function voce(etichetta, prezzo, best, extra){
-  return `<div class="voce ${best?'best':''}">
-    <div class="riga"><span style="color:${best?'var(--verde-scuro)':'inherit'}">${etichetta}</span>
-      <span class="prezzo" style="color:${best?'var(--verde-scuro)':'inherit'}">${IT(prezzo)}</span></div>${extra||""}</div>`;
+// prezzo al kg formattato per l'angolo in piccolo delle card, come sulle etichette dei negozi
+function kg(v){ return (v==null||isNaN(v)) ? null : v.toLocaleString("it-IT",{maximumFractionDigits:2})+" €/kg"; }
+
+// riga rossa, non in grassetto, che dichiara sempre da dove viene una stima: mai un prezzo
+// mostrato come certo senza dire la fonte
+function testoFonte(fonte){
+  if(fonte === "web") return "Prezzo assente dal nostro database: stima trovata con una ricerca sul web, non il prezzo esatto del tuo negozio.";
+  if(fonte === "openprices") return "Prezzo assente dal nostro database: dato reale da OpenPrices (Open Food Facts) — stima nazionale, non necessariamente quella del tuo negozio.";
+  return "Prezzo assente dal nostro database: stima del modello, senza una fonte verificata — può essere imprecisa.";
+}
+
+// variant: "" (neutro) | "best" (verde, opzione migliore reale) | "pick" (ambra, stima)
+// alKg: testo opzionale mostrato piccolo a destra del prezzo grande, come il prezzo al kg
+// stampato sulle etichette dei negozi — stessa convenzione su tutte le schermate di prezzo.
+function voce(etichetta, prezzo, variant, extra, alKg){
+  const colore = variant==="best" ? "var(--verde-scuro)" : variant==="pick" ? "var(--ambra-scuro)" : "inherit";
+  const coloreEtichetta = variant==="best" ? "var(--verde-scuro)" : variant==="pick" ? "var(--ambra-scuro)" : "var(--muto)";
+  const kgHtml = alKg ? `<span style="font-size:16px; font-weight:400; color:${colore}; margin-left:10px; white-space:nowrap">${alKg}</span>` : "";
+  return `<div class="voce ${variant||''}">
+    <div style="font-size:18px; color:${coloreEtichetta}">${etichetta}</div>
+    <div style="display:flex; align-items:baseline; flex-wrap:wrap">
+      <span class="prezzo" style="color:${colore}">${IT(prezzo)}</span>${kgHtml}
+    </div>${extra||""}</div>`;
 }
 
 // CASO C — mostra il confronto a tre livelli restituito da /api/leggi:
@@ -369,17 +406,18 @@ function renderConfronto(c, pagato){
     const colore = !scostato ? "inherit" : (delta > 0 ? "var(--rosso-scuro)" : "var(--verde-scuro)");
     const riga = !scostato ? "qui sei in linea con la media" : `${IT(Math.abs(delta))} ${delta>0?"in più":"in meno"} qui, rispetto alla media`;
     return `<div class="voce" style="margin-top:6px">
-      <div class="riga"><span>prezzo medio in Italia</span><span class="prezzo">${IT(c.valore)}</span></div>
+      <div style="font-size:18px; color:var(--muto)">prezzo medio in Italia</div>
+      <div class="prezzo">${IT(c.valore)}</div>
       <div class="hint" style="color:${colore}">${riga}</div>
-      <div class="hint" style="margin-top:4px">${c.nota||""}${c.data_piu_recente?` · ultima rilevazione ${c.data_piu_recente}`:""}</div>
+      <div class="hint" style="color:var(--rosso-scuro); margin-top:4px">${testoFonte("openprices")}${c.data_piu_recente?` · ultima rilevazione ${c.data_piu_recente}`:""}</div>
     </div>`;
   }
   if(c.fonte === "stima_web" && typeof c.valore === "number"){
-    return `<div class="hint center" style="margin-top:6px; color:var(--ambra-scuro)">
-      Il database di ZeroTare è costruito dagli utenti e questo prodotto non è ancora presente.
-      Un riferimento trovato sul web mi dice che potresti pagarlo circa
-      <b>${IT(c.valore)}</b> — stima nazionale, non necessariamente il prezzo del tuo negozio.
-    </div>`;
+    return `<div class="voce pick" style="margin-top:6px">
+        <div style="font-size:18px; color:var(--ambra-scuro)">il database non ce l'ha ancora: potresti pagarlo</div>
+        <div class="prezzo" style="color:var(--ambra-scuro)">${IT(c.valore)}</div>
+      </div>
+      <div class="hint" style="color:var(--rosso-scuro); margin-top:6px">${testoFonte("web")}</div>`;
   }
   // fonte imprevista o senza valore: non blocchiamo la UI, restiamo onesti
   return `<div class="hint center" style="margin-top:6px">${(c&&c.nota) || "Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database."}</div>`;
@@ -423,8 +461,8 @@ $("btn-chiudi").onclick = ()=>{
   // proiezione nazionale: ~26 milioni di famiglie che fanno la spesa
   const annoIt = Math.round(evitata * 26e6 * 52 / 1e9); // g -> ktonnellate
   $("c-plastica").textContent = evitata>0
-    ? `${Math.round(evitata)} g di plastica evitati in questa spesa · se tutti in Italia facessero questa scelta, in un anno sarebbero ≈ ${annoIt.toLocaleString("it-IT")} mila tonnellate di plastica in meno`
-    : "Nessuna plastica evitata in questa spesa: la prossima volta prova a scegliere lo sfuso.";
+    ? `${Math.round(evitata)} g di plastica/spazzatura evitati in questa spesa · se tutti in Italia facessero questa scelta, in un anno sarebbero ≈ ${annoIt.toLocaleString("it-IT")} mila tonnellate di plastica/spazzatura in meno`
+    : "Nessuna plastica/spazzatura evitata in questa spesa: la prossima volta prova a scegliere lo sfuso.";
   show("s-chiusura");
 };
 $("btn-nuovo").onclick = ()=>{ carrello=[]; salva(); render(); show("s-cart"); };
