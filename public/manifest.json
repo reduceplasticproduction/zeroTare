@@ -1,0 +1,12 @@
+{
+  "name": "ZeroTare",
+  "short_name": "ZeroTare",
+  "description": "Inquadra il cartellino, scopri quanto paghi di plastica e di comodità.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#04342C",
+  "theme_color": "#04342C",
+  "icons": [
+    { "src": "/logo.png", "sizes": "500x500", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "zerotare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZeroTare — web app anti-spazzatura: legge il cartellino, confronta sfuso e confezionato.",
+  "engines": { "node": ">=18" }
+}
