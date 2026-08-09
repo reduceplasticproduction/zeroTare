@@ -76,13 +76,54 @@
   <!-- ===== CARRELLO ===== -->
   <section id="s-cart">
     <div class="riga" style="align-items:center">
-      <div><h1>ZeroTare</h1><div class="hint">Spesa di oggi</div></div>
-      <div class="center"><div class="prezzo" id="cart-tot" style="font-size:22px">0,00 €</div><div class="hint">totale</div></div>
+      <div style="display:flex; align-items:center; gap:10px">
+        <div><h1>ZeroTare</h1><div class="hint">Spesa di oggi</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px">
+        <div class="center"><div class="prezzo" id="cart-tot" style="font-size:22px">0,00 €</div><div class="hint">totale</div></div>
+        <button id="btn-info" aria-label="Istruzioni" style="width:34px; height:34px; border-radius:50%; border:1px solid var(--bordo); background:#fff; color:var(--verde-scuro); font-size:17px; font-weight:600">i</button>
+      </div>
     </div>
     <div id="cart-lista" style="margin-top:14px"></div>
     <label class="cta" style="display:block; text-align:center" for="file">+ Aggiungi prodotto</label>
     <input type="file" id="file" accept="image/*" capture="environment" />
     <button class="ghost hidden" id="btn-chiudi">Chiudi carrello e vedi il bilancio</button>
+  </section>
+
+  <!-- ===== GUIDA ===== -->
+  <section id="s-guida" class="hidden">
+    <div class="riga" style="align-items:center; margin-bottom:14px">
+      <h1>Come si usa</h1>
+      <button class="ghost" id="btn-chiudi-guida" style="width:auto; margin:0; padding:8px 16px">Chiudi</button>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--rosso); margin-bottom:12px">
+      <div style="font-weight:600">📷 La fotocamera resta nera?</div>
+      <div class="hint" style="margin-top:8px">È quasi sempre un permesso da dare al sito.</div>
+      <div style="margin-top:10px; font-size:13px; line-height:1.6">
+        <b>iPhone (Safari):</b> Impostazioni → Safari → Fotocamera → “Consenti”. Poi ricarica la pagina.<br>
+        <b>Android (Chrome):</b> tocca il lucchetto accanto all’indirizzo → Autorizzazioni → Fotocamera → “Consenti”.<br>
+        Se non basta, chiudi del tutto il browser e altre app che usano la fotocamera, poi riapri.
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-weight:600">Il confronto in due scatti</div>
+      <div style="margin-top:8px; font-size:13px; line-height:1.6">
+        1. Inquadra prima il cartellino dello <b>sfuso</b> (prezzo “al kg”, banco frutta/verdura o al taglio). L’app registra il prezzo.<br>
+        2. Poi inquadra la <b>confezione</b> dello stesso prodotto. L’app ti dice quanto risparmi comprando sfuso.
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-weight:600">Cosa fa ZeroTare</div>
+      <div class="hint" style="margin-top:8px">Confronta cibo <b>sfuso</b> e <b>confezionato</b> e ti mostra quanto paghi in più per plastica e comodità. Alla fine della spesa vedi il bilancio e la plastica evitata.</div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:600">Cosa non fa (ancora)</div>
+      <div class="hint" style="margin-top:8px">Prodotti non alimentari (detersivi, deodoranti) sono fuori raggio. Per i confezionati di marca il confronto tra negozi arriverà quando ci saranno abbastanza scansioni. Alcuni numeri sono <b>stime</b>, marcate come tali: diventano precisi man mano che l’app cresce.</div>
+    </div>
   </section>
 
   <!-- ===== CARICAMENTO ===== -->
@@ -131,7 +172,7 @@
 <script>
 const IT = n => (n==null||isNaN(n)) ? "—" : n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
 const $ = id => document.getElementById(id);
-const show = id => ["s-welcome","s-cart","s-load","s-verdetto","s-chiusura"].forEach(s=>$(s).classList.toggle("hidden", s!==id));
+const show = id => ["s-welcome","s-cart","s-load","s-verdetto","s-chiusura","s-guida"].forEach(s=>$(s).classList.toggle("hidden", s!==id));
 
 let carrello = JSON.parse(localStorage.getItem("zt_cart") || "[]");
 const salva = () => localStorage.setItem("zt_cart", JSON.stringify(carrello));
@@ -165,36 +206,82 @@ $("file").addEventListener("change", async e => {
   if(!f) return;
   show("s-load");
   try{
-    const b64 = await toBase64(f);
+    const {b64, mime} = await fotoRidotta(f);
     const r = await fetch("/api/leggi",{method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({image:b64, mime:f.type})});
-    const d = await r.json();
-    if(d.errore){ alert("Non sono riuscito a leggere: "+d.errore); show("s-cart"); return; }
+      body:JSON.stringify({image:b64, mime})});
+    const txt = await r.text();
+    let d;
+    try{ d = JSON.parse(txt); }
+    catch{ return mostraErrore("Il server ha risposto in modo inatteso", txt.slice(0,300)); }
+    if(!r.ok || d.errore){ return mostraErrore(d.errore || ("Errore "+r.status), d.dettaglio || d.grezzo || ""); }
     mostraVerdetto(d);
-  }catch(err){ alert("Errore di rete. Riprova."); show("s-cart"); }
+  }catch(err){ mostraErrore("Non ho potuto inviare la foto", String(err && err.message || err)); }
 });
-const toBase64 = f => new Promise((res,rej)=>{
-  const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(f);
-});
+
+// rimpicciolisce la foto (lato max 1280px, JPEG) prima di inviarla: evita il
+// limite di dimensione di Vercel e velocizza la lettura
+function fotoRidotta(file, maxDim=1280, q=0.72){
+  return new Promise((resolve, reject)=>{
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      URL.revokeObjectURL(url);
+      let w=img.naturalWidth, h=img.naturalHeight;
+      if(!w||!h) return reject(new Error("immagine vuota"));
+      if(Math.max(w,h)>maxDim){ const s=maxDim/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+      const c=document.createElement("canvas"); c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      const durl=c.toDataURL("image/jpeg", q);
+      resolve({ b64: durl.split(",")[1], mime:"image/jpeg" });
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error("non riesco ad aprire la foto")); };
+    img.src = url;
+  });
+}
+
+function mostraErrore(msg, dett){
+  $("verdetto-body").innerHTML = `<div class="card">
+    <div style="font-weight:600; color:var(--rosso)">Non sono riuscito a leggere il cartellino</div>
+    <div class="hint" style="margin-top:8px">${(""+msg).replace(/</g,"&lt;")}</div>
+    ${dett?`<div class="hint" style="margin-top:10px; background:var(--pag); padding:10px; border-radius:8px; word-break:break-word; font-family:monospace; font-size:11px">${(""+dett).replace(/</g,"&lt;")}</div>`:""}
+    <div class="hint" style="margin-top:10px">Riprova con più luce e il cartellino ben dritto nell'inquadratura.</div>
+  </div>`;
+  show("s-verdetto");
+}
 
 // ---- costruzione verdetto secondo il caso ----
+function leggiSfusi(){ try{ return JSON.parse(localStorage.getItem("zt_sfuso")||"{}"); }catch{ return {}; } }
+function salvaSfuso(chiave, kg){ const s=leggiSfusi(); s[chiave]=kg; localStorage.setItem("zt_sfuso", JSON.stringify(s)); }
+
 function mostraVerdetto(d){
+  const nome = d.nome || "Prodotto";
+  const chiave = (d.prodotto_chiave || d.nome || "").toLowerCase().trim();
   const peso = d.peso_netto_g || (d.prezzo && d.prezzo_al_kg ? d.prezzo/d.prezzo_al_kg*1000 : null);
   const box = $("verdetto-body");
-  let html = `<div class="card"><div style="font-weight:600">${d.nome||"Prodotto"}</div>`;
-  if(peso) html += `<div class="hint" style="margin-bottom:12px">${Math.round(peso)} g</div>`;
+  let html = `<div class="card"><div style="font-weight:600">${nome}</div>`;
+  if(peso && !d.sfuso) html += `<div class="hint" style="margin-bottom:12px">${Math.round(peso)} g</div>`;
 
-  const nome = d.nome || "Prodotto";
+  // FUORI AMBITO — non alimentare
+  if(d.in_ambito === false){
+    html += `<div class="hint">Questo prodotto è fuori dal raggio di ZeroTare: per ora confrontiamo cibo sfuso e confezionato, non gli articoli non alimentari.</div>`;
+    box.innerHTML = html + "</div>"; finish([]); return;
+  }
 
-  // CASO A — esiste sfuso equivalente e abbiamo il prezzo per confrontare
-  if(d.esiste_sfuso_equivalente && d.stima_sfuso_al_kg && peso && !d.e_semilavorato){
-    const pagato = d.prezzo;
-    const sfuso = d.stima_sfuso_al_kg * peso/1000;
-    const risparmio = Math.max(0, pagato - sfuso);
-    const plastica = d.tara_g || PESO_CONF_DEF;
+  // CARTELLINO SFUSO (al kg, tasto bilancia) → registro il prezzo per il confronto
+  if(d.sfuso && d.prezzo_al_kg){
+    salvaSfuso(chiave, d.prezzo_al_kg);
+    html += `<div class="voce best"><div class="riga"><span style="color:var(--verde-scuro)">sfuso registrato</span><span class="prezzo" style="color:var(--verde-scuro)">${d.prezzo_al_kg.toLocaleString("it-IT")} €/kg</span></div></div>`;
+    html += `<div class="hint">Ho memorizzato il prezzo dello sfuso. Ora inquadra la <b>confezione</b> dello stesso prodotto e ti dico quanto risparmi.</div>`;
+    box.innerHTML = html + "</div>"; finish([]); return;
+  }
+
+  // CONFEZIONE con prezzo sfuso REALE già registrato → CASO A vero
+  const looseKg = leggiSfusi()[chiave];
+  if(!d.sfuso && peso && d.prezzo != null && looseKg){
+    const pagato = d.prezzo, sfuso = looseKg*peso/1000;
+    const risparmio = Math.max(0, pagato - sfuso), plastica = d.tara_g || PESO_CONF_DEF;
     html += voce("questa confezione", pagato, false,
-        risparmio>0?`<div class="hint" style="color:var(--rosso-scuro)">${IT(risparmio)} finiscono in plastica</div>`:"");
-    html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, sfuso, true, `<div class="hint" style="color:var(--verde)">${d.stima_sfuso_al_kg.toLocaleString("it-IT")} €/kg · stima</div>`);
+        risparmio>0.02?`<div class="hint" style="color:var(--rosso-scuro)">${IT(risparmio)} in più, per la confezione</div>`:"");
+    html += voce(`gli stessi ${Math.round(peso)} g, sfusi`, sfuso, true, `<div class="hint" style="color:var(--verde)">${looseKg.toLocaleString("it-IT")} €/kg · rilevato da te</div>`);
     box.innerHTML = html + "</div>";
     finish([
       ["Prendo lo sfuso · risparmio "+IT(risparmio), "btn-scelta", {nome,scelta:"scelto sfuso",pagato:sfuso,meglio:sfuso,peggio:pagato,plastica:0,evitata:plastica}],
@@ -202,10 +289,18 @@ function mostraVerdetto(d){
     ]); return;
   }
 
+  // CONFEZIONE con equivalente sfuso ma prezzo reale NON ancora rilevato → invito a scansionarlo
+  if(!d.sfuso && peso && d.prezzo != null && d.esiste_sfuso_equivalente && !d.e_semilavorato){
+    html += voce("questa confezione", d.prezzo, false, "");
+    html += `<div class="hint">Per sapere quanto risparmi davvero, inquadra ora il cartellino dello <b>sfuso</b> (prezzo al kg) dello stesso prodotto.${d.stima_sfuso_al_kg?` A occhio lo sfuso costa ~${d.stima_sfuso_al_kg.toLocaleString("it-IT")} €/kg, ma il prezzo vero del tuo negozio conta di più.`:""}</div>`;
+    box.innerHTML = html + "</div>";
+    finish([["Aggiungo comunque la confezione", "btn-neutro", {nome,scelta:"confezione",pagato:d.prezzo,meglio:d.prezzo,peggio:d.prezzo,plastica:d.tara_g||PESO_CONF_DEF,evitata:0}]]);
+    return;
+  }
+
   // CASO B — semilavorato con stima materia prima
   if(d.e_semilavorato && d.stima_materia_prima_al_kg && peso){
-    const pagato = d.prezzo;
-    const materia = d.stima_materia_prima_al_kg * peso/1000;
+    const pagato = d.prezzo, materia = d.stima_materia_prima_al_kg * peso/1000;
     const comodita = Math.max(0, pagato - materia);
     html += voce("questa vaschetta", pagato, false, "");
     html += `<div class="voce pick"><div class="hint" style="color:var(--ambra-scuro); margin-bottom:8px">È un semipreparato. La materia prima, da sola, di media costerebbe:</div>
@@ -216,9 +311,13 @@ function mostraVerdetto(d){
     return;
   }
 
-  // CASO C — confezionato industriale / già sfuso: confronto prezzo (DB vuoto -> informativo)
+  // CASO C — confezionato industriale / già sfuso senza gemello: informativo
   {
     const pagato = d.prezzo;
+    if(pagato == null){
+      html += `<div class="hint">Ho riconosciuto il prodotto ma non sono riuscito a leggere il prezzo. Riprova con il cartellino ben a fuoco e dritto.</div>`;
+      box.innerHTML = html + "</div>"; finish([]); return;
+    }
     html += voce("qui", pagato, false, "");
     html += `<div class="hint center" style="margin-top:6px">Confronto prezzi tra negozi in arrivo: le prime scansioni costruiscono il database.</div>`;
     box.innerHTML = html + "</div>";
@@ -278,6 +377,8 @@ $("btn-chiudi").onclick = ()=>{
 $("btn-nuovo").onclick = ()=>{ carrello=[]; salva(); render(); show("s-cart"); };
 
 $("btn-inizia").onclick = ()=>{ localStorage.setItem("zt_seen","1"); show("s-cart"); };
+$("btn-info").onclick = ()=>show("s-guida");
+$("btn-chiudi-guida").onclick = ()=>show("s-cart");
 
 render();
 show(localStorage.getItem("zt_seen") ? "s-cart" : "s-welcome");
