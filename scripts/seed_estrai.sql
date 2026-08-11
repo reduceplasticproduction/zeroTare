@@ -17,9 +17,13 @@
 --                              esattamente come la tabella `prezzi`.
 --
 -- Nota onesta: i prodotti che non hanno ALMENO una rilevazione Open Prices in Italia
--- restano fuori da open_prices_ita.csv, quindi il loro primo prezzo nella tabella
--- `prezzi` arriverà dalla prima scansione reale di un cliente (origine=negozio). Meglio
--- questo che inventare un numero — stesso principio già applicato in api/leggi.js.
+-- restano fuori da open_prices_ita.csv (nessun prezzo inventato — stesso principio già
+-- applicato in api/leggi.js), ma finiscono comunque in off_italia_top10000.csv: dal
+-- 2026-08-11 seed_carica.mjs carica QUESTO file per intero come anagrafica pura
+-- (origine='anagrafica', prezzo/unita null — richiede la migrazione in db/schema.sql),
+-- così l'app riconosce il prodotto anche prima che qualcuno lo scansioni davvero. Il
+-- loro primo PREZZO nella tabella arriverà dalla prima scansione reale di un cliente
+-- (origine=negozio) o da un futuro seed Open Prices più ricco.
 
 INSTALL httpfs;
 LOAD httpfs;
@@ -28,11 +32,42 @@ LOAD httpfs;
 -- cambia i nomi delle colonne (il dump viene rigenerato ogni notte).
 DESCRIBE SELECT * FROM read_parquet('https://huggingface.co/datasets/openfoodfacts/product-database/resolve/main/food.parquet') LIMIT 0;
 
+-- product_name NON è testo semplice in questo dump: è una lista di
+-- STRUCT(lang, text) — un nome per ogni lingua disponibile (più una voce
+-- 'main' che punta al nome nella lingua principale del prodotto). Questa
+-- macro estrae il testo giusto: preferisce 'it', poi 'main', poi la prima
+-- voce disponibile qualunque sia la lingua. NULL-safe in ogni caso (campo
+-- mancante, lista vuota, nessuna voce nella lingua richiesta). Verificata
+-- localmente su dati finti che riproducono la stessa forma prima di questo
+-- commit — vedi commento in fondo al file.
+CREATE OR REPLACE MACRO testo_lingua(campo, lingua) AS (
+  struct_extract(
+    coalesce(
+      list_filter(campo, lambda x: struct_extract(x, 'lang') = lingua)[1],
+      list_filter(campo, lambda x: struct_extract(x, 'lang') = 'main')[1],
+      campo[1]
+    ),
+    'text'
+  )
+);
+
 -- 1) anagrafica: i ~10.000 prodotti più scansionati in Italia, popolarità = unique_scans_n
 COPY (
+  WITH base AS (
+    SELECT
+      code AS barcode,
+      testo_lingua(product_name, 'it') AS nome,
+      brands,
+      quantity,
+      unique_scans_n,
+      categories_tags
+    FROM read_parquet('https://huggingface.co/datasets/openfoodfacts/product-database/resolve/main/food.parquet')
+    WHERE list_contains(countries_tags, 'en:italy')
+      AND code IS NOT NULL
+  )
   SELECT
-    code AS barcode,
-    product_name AS nome,
+    barcode,
+    nome,
     brands,
     quantity,
     unique_scans_n,
@@ -41,11 +76,13 @@ COPY (
     -- chiave che Claude legge dal cartellino in negozio (api/leggi.js), ma il
     -- matching lato app tollera sovrapposizioni parziali tra chiavi diverse
     -- (vedi chiaviCorrispondono in public/index.html), quindi resta comunque utile.
+    -- ATTENZIONE COERENZA: stessa identica euristica in lib/openfoodfacts.js
+    -- (chiaveDaNome) per il lookup live — se cambi una, cambia anche l'altra.
     nullif(trim(
       array_to_string(
         list_slice(
           str_split(
-            trim(regexp_replace(regexp_replace(lower(product_name),
+            trim(regexp_replace(regexp_replace(lower(nome),
               '[0-9]+[.,]?[0-9]*\s*(g|kg|ml|cl|l|gr|pz)\b', '', 'g'),
               '[^\w\s]', ' ', 'g')),
             ' '
@@ -70,10 +107,8 @@ COPY (
       WHEN list_contains(categories_tags,'en:beverages') OR list_contains(categories_tags,'en:drinks') THEN 'bevande'
       ELSE 'altro'
     END AS categoria
-  FROM read_parquet('https://huggingface.co/datasets/openfoodfacts/product-database/resolve/main/food.parquet')
-  WHERE list_contains(countries_tags, 'en:italy')
-    AND code IS NOT NULL
-    AND product_name IS NOT NULL AND length(trim(product_name)) > 0
+  FROM base
+  WHERE nome IS NOT NULL AND length(trim(nome)) > 0
   ORDER BY unique_scans_n DESC NULLS LAST
   LIMIT 10000
 ) TO 'off_italia_top10000.csv' (HEADER, DELIMITER ',');
@@ -97,3 +132,11 @@ COPY (
 ) TO 'open_prices_ita.csv' (HEADER, DELIMITER ',');
 
 .print '✓ Estrazione completata: off_italia_top10000.csv e open_prices_ita.csv'
+
+-- Nota (2026-08-11): il primo run del workflow GitHub Actions falliva qui — product_name
+-- nel dump food.parquet è STRUCT(lang, text)[], non testo semplice (Binder Error su
+-- trim(product_name)). Corretto con la macro testo_lingua() sopra. Non potendo raggiungere
+-- huggingface.co per un test dal vivo, ho verificato la macro localmente con DuckDB su
+-- una tabella finta che riproduce la stessa forma dell'errore (compresi i casi lista
+-- NULL, nessuna voce 'it', nessuna voce 'main', testo vuoto dopo trim): risultati corretti
+-- in tutti i casi. La prova reale resta comunque il prossimo run del workflow.
