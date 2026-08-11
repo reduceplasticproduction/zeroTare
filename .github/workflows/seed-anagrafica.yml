@@ -1,0 +1,53 @@
+name: Seed anagrafica (Open Food Facts / Open Prices)
+
+# Si lancia A MANO dal tab "Actions" di GitHub (pulsante "Run workflow"): non gira
+# automaticamente, non tocca nulla finché non lo premi tu. Fa TUTTO il lavoro che
+# altrimenti richiederebbe DuckDB installato e comandi da Terminale sul Mac — gira su
+# un runner GitHub con internet pieno, estrae i due CSV dai dump ufficiali Open Food
+# Facts/Open Prices (scripts/seed_estrai.sql) e li carica direttamente su Supabase
+# (scripts/seed_carica.mjs). Zero chiamate a Claude, zero vendor a pagamento.
+#
+# Prima di usarlo UNA VOLTA SOLA: Settings → Secrets and variables → Actions →
+# "New repository secret", aggiungi questi due (stessi valori già su Vercel):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+
+on:
+  workflow_dispatch:
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa DuckDB (binario ufficiale, gratis)
+        run: |
+          curl -L https://github.com/duckdb/duckdb/releases/latest/download/duckdb_cli-linux-amd64.zip -o duckdb.zip
+          unzip duckdb.zip
+          chmod +x duckdb
+          sudo mv duckdb /usr/local/bin/duckdb
+
+      - name: Estrai i CSV dai dump ufficiali (DuckDB, query remota via httpfs)
+        working-directory: scripts
+        run: duckdb -c ".read seed_estrai.sql"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Carica anagrafica + prezzi reali su Supabase
+        working-directory: scripts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node seed_carica.mjs
+
+      - name: Conserva i CSV come allegato (per controllo/debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-csv
+          path: scripts/*.csv
+          if-no-files-found: ignore
