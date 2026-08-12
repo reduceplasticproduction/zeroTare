@@ -28,7 +28,26 @@ jobs:
           chmod +x duckdb
           sudo mv duckdb /usr/local/bin/duckdb
 
-      - name: Estrai i CSV dai dump ufficiali (DuckDB, query remota via httpfs)
+      # v2 (2026-08-11): scarichiamo i dump UNA VOLTA SOLA in locale invece di farli
+      # interrogare da DuckDB via httpfs a distanza — la query remota sul Parquet di
+      # Hugging Face generava centinaia di piccole richieste ed esauriva il limite
+      # anonimo di HF (condiviso tra tutti i runner GitHub Actions, non solo i nostri).
+      # Il CSV prodotti viene da static.openfoodfacts.org (host diverso da Hugging
+      # Face: il 429 non c'entra più); il Parquet Open Prices resta su Hugging Face ma
+      # ora scaricato per intero anziché interrogato, stessa precauzione.
+      - name: Scarica i dump ufficiali (un download intero, non query remota)
+        working-directory: scripts
+        run: |
+          curl -L --fail --retry 3 --retry-delay 10 \
+            -o food.csv.gz \
+            https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz
+          ls -lh food.csv.gz
+          curl -L --fail --retry 3 --retry-delay 10 \
+            -o open_prices.parquet \
+            https://huggingface.co/datasets/openfoodfacts/open-prices/resolve/main/prices.parquet
+          ls -lh open_prices.parquet
+
+      - name: Estrai i CSV dai dump scaricati (DuckDB, tutto in locale)
         working-directory: scripts
         run: duckdb -c ".read seed_estrai.sql"
 
